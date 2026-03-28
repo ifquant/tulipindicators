@@ -1,10 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-use tulipindicators::{find, Real};
+use tulipindicators::{all, find, Real};
 
 const TEST_FILES: &[&str] = &["tests/atoz.txt", "tests/untest.txt", "tests/extra.txt"];
-const TARGETS: &[&str] = &["ema", "sma"];
 const APPROX_TOLERANCE: Real = 1e-3;
 const STREAM_TOLERANCE: Real = 1e-12;
 const STREAM_STEPS: &[usize] = &[1, 2, 3, 5, 7, 64];
@@ -38,13 +37,16 @@ fn batch_outputs_match_existing_golden_data() {
 
 #[test]
 fn stream_outputs_match_batch_outputs_for_chunked_runs() {
-    for indicator_name in TARGETS {
-        let indicator = find(indicator_name).expect("indicator should be registered");
+    for indicator in all() {
+        let Ok(Some(_)) = indicator.create_stream(&default_options(indicator.metadata().name))
+        else {
+            continue;
+        };
 
         for path in TEST_FILES {
             for case in parse_cases(path)
                 .into_iter()
-                .filter(|case| case.name == *indicator_name)
+                .filter(|case| case.name == indicator.metadata().name)
             {
                 let inputs: Vec<&[Real]> = case.inputs.iter().map(Vec::as_slice).collect();
                 let batch = indicator.run(&inputs, &case.options).unwrap();
@@ -95,6 +97,14 @@ fn stream_outputs_match_batch_outputs_for_chunked_runs() {
                 }
             }
         }
+    }
+}
+
+fn default_options(indicator: &str) -> Vec<Real> {
+    match indicator {
+        "bbands" => vec![5.0, 2.0],
+        "macd" => vec![12.0, 26.0, 9.0],
+        _ => vec![5.0],
     }
 }
 

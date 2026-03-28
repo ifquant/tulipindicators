@@ -1,0 +1,141 @@
+use crate::core::error::IndicatorError;
+use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::types::{IndicatorCategory, Real};
+use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
+
+const METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "atr",
+    full_name: "Average True Range",
+    category: IndicatorCategory::Indicator,
+    input_names: &["high", "low", "close"],
+    option_names: &["period"],
+    output_names: &["atr"],
+};
+
+#[derive(Debug, Clone, Copy)]
+pub struct Atr;
+
+impl Indicator for Atr {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        let period = parse_period(options)?;
+        Ok(period - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let (high, low, close) = triple_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let lookback = period - 1;
+        let mut output = Vec::with_capacity(high.len().saturating_sub(lookback));
+
+        if high.len() <= lookback {
+            return Ok(vec![output]);
+        }
+
+        let per = 1.0 / period as Real;
+        let mut sum = high[0] - low[0];
+
+        for index in 1..period {
+            sum += true_range(high[index], low[index], close[index - 1]);
+        }
+
+        let mut value = sum / period as Real;
+        output.push(value);
+
+        for index in period..high.len() {
+            let tr = true_range(high[index], low[index], close[index - 1]);
+            value = (tr - value) * per + value;
+            output.push(value);
+        }
+
+        Ok(vec![output])
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        Ok(Some(Box::new(AtrStream::new(options)?)))
+    }
+}
+
+struct AtrStream {
+    period: usize,
+    progress: usize,
+    sum: Real,
+    last: Option<Real>,
+    last_close: Option<Real>,
+}
+
+impl AtrStream {
+    fn new(options: &[Real]) -> Result<Self, IndicatorError> {
+        Ok(Self {
+            period: parse_period(options)?,
+            progress: 0,
+            sum: 0.0,
+            last: None,
+            last_close: None,
+        })
+    }
+}
+
+impl IndicatorStream for AtrStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.progress
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let (high, low, close) = triple_input(METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(high.len());
+
+        for index in 0..high.len() {
+            let tr = match self.last_close {
+                Some(previous_close) => true_range(high[index], low[index], previous_close),
+                None => high[index] - low[index],
+            };
+
+            if self.progress < self.period {
+                self.sum += tr;
+                if self.progress + 1 == self.period {
+                    let value = self.sum / self.period as Real;
+                    self.last = Some(value);
+                    output.push(value);
+                }
+            } else if let Some(last) = self.last {
+                let value = (tr - last) / self.period as Real + last;
+                self.last = Some(value);
+                output.push(value);
+            }
+
+            self.last_close = Some(close[index]);
+            self.progress += 1;
+        }
+
+        Ok(vec![output])
+    }
+}
+
+fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {
+    expect_option_count(METADATA.name, options, 1)?;
+    parse_usize_option(METADATA.name, options, 0, "period", 1)
+}
+
+fn true_range(high: Real, low: Real, previous_close: Real) -> Real {
+    let ych = (high - previous_close).abs();
+    let ycl = (low - previous_close).abs();
+    let mut value = high - low;
+    if ych > value {
+        value = ych;
+    }
+    if ycl > value {
+        value = ycl;
+    }
+    value
+}

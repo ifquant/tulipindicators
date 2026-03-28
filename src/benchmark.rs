@@ -285,7 +285,8 @@ fn collect_stream_outputs(
 }
 
 fn choose_iterations(input_len: usize, config: &BenchmarkConfig) -> usize {
-    let target_work = 1_000_000usize;
+    let target_work = 1_000_000usize.saturating_mul(config.target_duration.as_millis() as usize)
+        / DEFAULT_TARGET_MS as usize;
     let iterations = target_work / input_len.max(1);
     iterations.max(config.min_iterations)
 }

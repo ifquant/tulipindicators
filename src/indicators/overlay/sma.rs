@@ -1,6 +1,7 @@
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};
+use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "sma",
@@ -114,38 +115,6 @@ impl IndicatorStream for SmaStream {
 }
 
 fn parse_period(options: &[Real], indicator: &'static str) -> Result<usize, IndicatorError> {
-    if options.len() != 1 {
-        return Err(IndicatorError::WrongOptionCount {
-            indicator,
-            expected: 1,
-            actual: options.len(),
-        });
-    }
-
-    let value = options[0];
-    if !value.is_finite() || value < 1.0 || value.fract() != 0.0 {
-        return Err(IndicatorError::InvalidOption {
-            indicator,
-            option: "period",
-            value,
-            reason: "expected a positive integer",
-        });
-    }
-
-    Ok(value as usize)
-}
-
-fn single_input<'a>(
-    indicator: &'static str,
-    inputs: &'a [&'a [Real]],
-) -> Result<&'a [Real], IndicatorError> {
-    if inputs.len() != 1 {
-        return Err(IndicatorError::WrongInputCount {
-            indicator,
-            expected: 1,
-            actual: inputs.len(),
-        });
-    }
-
-    Ok(inputs[0])
+    expect_option_count(indicator, options, 1)?;
+    parse_usize_option(indicator, options, 0, "period", 1)
 }
