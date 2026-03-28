@@ -215,9 +215,13 @@ impl Indicator for Crossover {
         let mut output = Vec::with_capacity(left.len().saturating_sub(1));
 
         for index in 1..left.len() {
-            output.push(bool_to_real(
-                left[index] > right[index] && left[index - 1] <= right[index - 1],
-            ));
+            output.push(
+                if left[index] > right[index] && left[index - 1] <= right[index - 1] {
+                    1.0
+                } else {
+                    0.0
+                },
+            );
         }
 
         Ok(vec![output])
@@ -236,7 +240,11 @@ impl Indicator for Crossover {
         ensure_output_len(&CROSSOVER_METADATA, outputs[0].len(), output_len, 0)?;
 
         for (dst, index) in outputs[0][..output_len].iter_mut().zip(1..left.len()) {
-            *dst = bool_to_real(left[index] > right[index] && left[index - 1] <= right[index - 1]);
+            *dst = if left[index] > right[index] && left[index - 1] <= right[index - 1] {
+                1.0
+            } else {
+                0.0
+            };
         }
 
         Ok(output_len)
@@ -274,7 +282,11 @@ impl IndicatorStream for CrossoverStream {
 
         for (&lhs, &rhs) in left.iter().zip(right.iter()) {
             if let Some((prev_lhs, prev_rhs)) = self.previous {
-                output.push(bool_to_real(lhs > rhs && prev_lhs <= prev_rhs));
+                output.push(if lhs > rhs && prev_lhs <= prev_rhs {
+                    1.0
+                } else {
+                    0.0
+                });
             }
             self.previous = Some((lhs, rhs));
             self.progress += 1;
