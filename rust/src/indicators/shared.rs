@@ -310,6 +310,13 @@ impl MonotonicQueue {
             .map(|(_, value)| *value)
             .expect("monotonic queue should not be empty")
     }
+
+    pub fn front_index(&self) -> usize {
+        self.values
+            .front()
+            .map(|(index, _)| *index)
+            .expect("monotonic queue should not be empty")
+    }
 }
 
 #[derive(Debug, Clone)]

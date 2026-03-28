@@ -1,7 +1,7 @@
 use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
-    Adx, Adxr, Apo, Atr, Di, Dm, Dx, Macd, Mom, Natr, Ppo, Rsi, StdDev, StdErr, Stoch, StochRsi,
-    Trix, Var, WillR,
+    Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Di, Dm, Dpo, Dx, Emv, Macd, Mass, Mom, Natr, Ppo,
+    Roc, Rocr, Rsi, StdDev, StdErr, Stoch, StochRsi, Trix, Var, Vhf, Volatility, WillR,
 };
 use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, Min, Sum};
 use crate::indicators::overlay::{
@@ -18,7 +18,10 @@ pub static ACOS: Acos = Acos;
 pub static ADX: Adx = Adx;
 pub static ADXR: Adxr = Adxr;
 pub static ADD: Add = Add;
+pub static AO: Ao = Ao;
 pub static APO: Apo = Apo;
+pub static AROON: Aroon = Aroon;
+pub static AROONOSC: AroonOsc = AroonOsc;
 pub static ASIN: Asin = Asin;
 pub static ATR: Atr = Atr;
 pub static ATAN: Atan = Atan;
@@ -34,9 +37,11 @@ pub static DEMA: Dema = Dema;
 pub static DI: Di = Di;
 pub static DIV: Div = Div;
 pub static DM: Dm = Dm;
+pub static DPO: Dpo = Dpo;
 pub static DX: Dx = Dx;
 pub static EDECAY: EDecay = EDecay;
 pub static EMA: Ema = Ema;
+pub static EMV: Emv = Emv;
 pub static EXP: Exp = Exp;
 pub static FLOOR: Floor = Floor;
 pub static HMA: Hma = Hma;
@@ -47,11 +52,14 @@ pub static LOG10: Log10 = Log10;
 pub static MACD: Macd = Macd;
 pub static MAX: Max = Max;
 pub static MEDPRICE: MedPrice = MedPrice;
+pub static MASS: Mass = Mass;
 pub static MIN: Min = Min;
 pub static MOM: Mom = Mom;
 pub static MUL: Mul = Mul;
 pub static NATR: Natr = Natr;
 pub static PPO: Ppo = Ppo;
+pub static ROC: Roc = Roc;
+pub static ROCR: Rocr = Rocr;
 pub static RSI: Rsi = Rsi;
 pub static ROUND: Round = Round;
 pub static SMA: Sma = Sma;
@@ -74,7 +82,9 @@ pub static TRIX: Trix = Trix;
 pub static TRUNC: Trunc = Trunc;
 pub static TYPPRICE: TypPrice = TypPrice;
 pub static VAR: Var = Var;
+pub static VHF: Vhf = Vhf;
 pub static VIDYA: Vidya = Vidya;
+pub static VOLATILITY: Volatility = Volatility;
 pub static VWMA: Vwma = Vwma;
 pub static WCPRICE: WcPrice = WcPrice;
 pub static WILDERS: Wilders = Wilders;
@@ -82,14 +92,86 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 68] {
+pub fn all() -> [&'static dyn Indicator; 78] {
     [
-        &ABS, &ACOS, &ADD, &ADX, &ADXR, &APO, &ASIN, &ATR, &ATAN, &AVGPRICE, &BBANDS, &CEIL, &COS,
-        &COSH, &CROSSANY, &CROSSOVER, &DECAY, &DEMA, &DI, &DIV, &DM, &DX, &EDECAY, &EMA, &EXP,
-        &FLOOR, &HMA, &KAMA, &LAG, &LN, &LOG10, &MACD, &MAX, &MEDPRICE, &MIN, &MOM, &MUL, &NATR,
-        &PPO, &ROUND, &RSI, &SIN, &SINH, &SMA, &SQRT, &STDERR, &STDDEV, &STOCH, &STOCHRSI, &SUB,
-        &SUM, &TAN, &TANH, &TEMA, &TODEG, &TORAD, &TRIMA, &TRIX, &TRUNC, &TYPPRICE, &VAR, &VIDYA,
-        &VWMA, &WCPRICE, &WILDERS, &WILLR, &WMA, &ZLEMA,
+        &ABS,
+        &ACOS,
+        &ADD,
+        &ADX,
+        &ADXR,
+        &AO,
+        &APO,
+        &AROON,
+        &AROONOSC,
+        &ASIN,
+        &ATR,
+        &ATAN,
+        &AVGPRICE,
+        &BBANDS,
+        &CEIL,
+        &COS,
+        &COSH,
+        &CROSSANY,
+        &CROSSOVER,
+        &DECAY,
+        &DEMA,
+        &DI,
+        &DIV,
+        &DM,
+        &DPO,
+        &DX,
+        &EDECAY,
+        &EMA,
+        &EMV,
+        &EXP,
+        &FLOOR,
+        &HMA,
+        &KAMA,
+        &LAG,
+        &LN,
+        &LOG10,
+        &MACD,
+        &MASS,
+        &MAX,
+        &MEDPRICE,
+        &MIN,
+        &MOM,
+        &MUL,
+        &NATR,
+        &PPO,
+        &ROC,
+        &ROCR,
+        &ROUND,
+        &RSI,
+        &SIN,
+        &SINH,
+        &SMA,
+        &SQRT,
+        &STDERR,
+        &STDDEV,
+        &STOCH,
+        &STOCHRSI,
+        &SUB,
+        &SUM,
+        &TAN,
+        &TANH,
+        &TEMA,
+        &TODEG,
+        &TORAD,
+        &TRIMA,
+        &TRIX,
+        &TRUNC,
+        &TYPPRICE,
+        &VAR,
+        &VHF,
+        &VIDYA,
+        &VOLATILITY,
+        &VWMA,
+        &WCPRICE,
+        &WILDERS,
+        &WILLR,
+        &WMA,
+        &ZLEMA,
     ]
 }
 
@@ -100,7 +182,10 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "add" => Some(&ADD),
         "adx" => Some(&ADX),
         "adxr" => Some(&ADXR),
+        "ao" => Some(&AO),
         "apo" => Some(&APO),
+        "aroon" => Some(&AROON),
+        "aroonosc" => Some(&AROONOSC),
         "asin" => Some(&ASIN),
         "atr" => Some(&ATR),
         "atan" => Some(&ATAN),
@@ -116,9 +201,11 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "di" => Some(&DI),
         "div" => Some(&DIV),
         "dm" => Some(&DM),
+        "dpo" => Some(&DPO),
         "dx" => Some(&DX),
         "edecay" => Some(&EDECAY),
         "ema" => Some(&EMA),
+        "emv" => Some(&EMV),
         "exp" => Some(&EXP),
         "floor" => Some(&FLOOR),
         "hma" => Some(&HMA),
@@ -127,6 +214,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "ln" => Some(&LN),
         "log10" => Some(&LOG10),
         "macd" => Some(&MACD),
+        "mass" => Some(&MASS),
         "max" => Some(&MAX),
         "medprice" => Some(&MEDPRICE),
         "min" => Some(&MIN),
@@ -134,6 +222,8 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "mul" => Some(&MUL),
         "natr" => Some(&NATR),
         "ppo" => Some(&PPO),
+        "roc" => Some(&ROC),
+        "rocr" => Some(&ROCR),
         "rsi" => Some(&RSI),
         "round" => Some(&ROUND),
         "sma" => Some(&SMA),
@@ -156,7 +246,9 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "trunc" => Some(&TRUNC),
         "typprice" => Some(&TYPPRICE),
         "var" => Some(&VAR),
+        "vhf" => Some(&VHF),
         "vidya" => Some(&VIDYA),
+        "volatility" => Some(&VOLATILITY),
         "vwma" => Some(&VWMA),
         "wcprice" => Some(&WCPRICE),
         "wilders" => Some(&WILDERS),
