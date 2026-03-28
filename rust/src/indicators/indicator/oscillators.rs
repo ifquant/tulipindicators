@@ -123,8 +123,27 @@ impl Indicator for Cmo {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = CmoStream::new(options)?;
-        stream.feed(inputs)
+        let input = single_input(CMO_METADATA.name, inputs)?;
+        let period = parse_period(CMO_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period);
+        let mut output = vec![0.0; output_len];
+        let produced = run_cmo_batch(input, period, &mut output);
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(CMO_METADATA.name, inputs)?;
+        let period = parse_period(CMO_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period);
+        validate_output_slices(&CMO_METADATA, outputs, 1)?;
+        ensure_output_len(&CMO_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_cmo_batch(input, period, &mut outputs[0][..output_len]))
     }
 
     fn create_stream(
@@ -400,6 +419,49 @@ impl IndicatorStream for CmoStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_cmo_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() <= period {
+        return 0;
+    }
+
+    let mut up_sum = 0.0;
+    let mut down_sum = 0.0;
+
+    for index in 1..=period {
+        let current = input[index];
+        let previous = input[index - 1];
+        if current > previous {
+            up_sum += current - previous;
+        } else if current < previous {
+            down_sum += previous - current;
+        }
+    }
+
+    output[0] = 100.0 * (up_sum - down_sum) / (up_sum + down_sum);
+
+    for (dst, index) in output[1..].iter_mut().zip((period + 1)..input.len()) {
+        let removed_current = input[index - period];
+        let removed_previous = input[index - period - 1];
+        if removed_current > removed_previous {
+            up_sum -= removed_current - removed_previous;
+        } else if removed_current < removed_previous {
+            down_sum -= removed_previous - removed_current;
+        }
+
+        let current = input[index];
+        let previous = input[index - 1];
+        if current > previous {
+            up_sum += current - previous;
+        } else if current < previous {
+            down_sum += previous - current;
+        }
+
+        *dst = 100.0 * (up_sum - down_sum) / (up_sum + down_sum);
+    }
+
+    output.len()
 }
 
 struct CviStream {
