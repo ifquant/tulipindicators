@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 
@@ -74,6 +76,46 @@ impl Indicator for Bbands {
         }
 
         Ok(vec![lower, middle, upper])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let (period, stddev) = parse_options(options)?;
+        validate_output_slices(&METADATA, outputs, 3)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        ensure_output_len(&METADATA, outputs[1].len(), output_len, 1)?;
+        ensure_output_len(&METADATA, outputs[2].len(), output_len, 2)?;
+
+        if output_len == 0 {
+            return Ok(0);
+        }
+
+        let scale = 1.0 / period as Real;
+        let mut sum = 0.0;
+        let mut sum2 = 0.0;
+
+        for value in input.iter().take(period) {
+            sum += *value;
+            sum2 += value * value;
+        }
+
+        write_band_values(outputs, 0, sum, sum2, scale, stddev);
+
+        for index in period..input.len() {
+            sum += input[index];
+            sum2 += input[index] * input[index];
+            sum -= input[index - period];
+            sum2 -= input[index - period] * input[index - period];
+            write_band_values(outputs, index - period + 1, sum, sum2, scale, stddev);
+        }
+
+        Ok(output_len)
     }
 
     fn create_stream(
@@ -176,6 +218,23 @@ fn push_band_values(
     middle.push(mean);
     lower.push(mean - stddev * deviation);
     upper.push(mean + stddev * deviation);
+}
+
+fn write_band_values(
+    outputs: &mut [&mut [Real]],
+    index: usize,
+    sum: Real,
+    sum2: Real,
+    scale: Real,
+    stddev: Real,
+) {
+    let mean = sum * scale;
+    let variance = (sum2 * scale - mean * mean).max(0.0);
+    let deviation = variance.sqrt();
+
+    outputs[0][index] = mean - stddev * deviation;
+    outputs[1][index] = mean;
+    outputs[2][index] = mean + stddev * deviation;
 }
 
 fn parse_options(options: &[Real]) -> Result<(usize, Real), IndicatorError> {

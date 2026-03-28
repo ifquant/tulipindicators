@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{
     double_input, expect_option_count, parse_usize_option, single_input, triple_input,
@@ -192,6 +194,40 @@ impl Indicator for Md {
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let mut stream = MdStream::new(options)?;
         stream.feed(inputs)
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(MD_METADATA.name, inputs)?;
+        let period = parse_period(MD_METADATA.name, options)?;
+        validate_output_slices(&MD_METADATA, outputs, 1)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        ensure_output_len(&MD_METADATA, outputs[0].len(), output_len, 0)?;
+
+        if output_len == 0 {
+            return Ok(0);
+        }
+
+        let mut sum = 0.0;
+        for value in input.iter().take(period) {
+            sum += *value;
+        }
+
+        outputs[0][0] = mean_deviation_window(&input[..period], sum, period);
+
+        for index in period..input.len() {
+            sum += input[index];
+            sum -= input[index - period];
+            let output_index = index - period + 1;
+            outputs[0][output_index] =
+                mean_deviation_window(&input[output_index..=index], sum, period);
+        }
+
+        Ok(output_len)
     }
 
     fn create_stream(
@@ -548,6 +584,15 @@ impl IndicatorStream for MdStream {
 
         Ok(vec![output])
     }
+}
+
+fn mean_deviation_window(window: &[Real], sum: Real, period: usize) -> Real {
+    let avg = sum / period as Real;
+    let acc = window
+        .iter()
+        .map(|value| (avg - *value).abs())
+        .sum::<Real>();
+    acc / period as Real
 }
 
 struct MswStream {

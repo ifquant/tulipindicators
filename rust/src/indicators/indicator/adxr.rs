@@ -1,8 +1,12 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{double_input, expect_option_count, parse_usize_option};
-use crate::indicators::shared::{directional_ratio, DirectionalMovementState, WildersAverageState};
+use crate::indicators::shared::{
+    directional_movement, directional_ratio, DirectionalMovementState, WildersAverageState,
+};
 use std::collections::VecDeque;
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
@@ -51,6 +55,75 @@ impl Indicator for Adxr {
         }
 
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        let lookback = (period - 1) * 3;
+        let output_len = high.len().saturating_sub(lookback);
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+
+        if output_len == 0 {
+            return Ok(0);
+        }
+
+        let per = (period - 1) as Real / period as Real;
+        let invper = 1.0 / period as Real;
+
+        let mut dmup = 0.0;
+        let mut dmdown = 0.0;
+        for index in 1..period {
+            let (up, down) =
+                directional_movement(high[index - 1], high[index], low[index - 1], low[index]);
+            dmup += up;
+            dmdown += down;
+        }
+
+        let mut adx = directional_ratio(dmup, dmdown);
+        let history_len = period - 1;
+        let mut history = vec![0.0; history_len];
+        let mut history_index = 0usize;
+        let mut out_index = 0usize;
+
+        for index in period..high.len() {
+            let (up, down) =
+                directional_movement(high[index - 1], high[index], low[index - 1], low[index]);
+            dmup = dmup * per + up;
+            dmdown = dmdown * per + down;
+            let dx = directional_ratio(dmup, dmdown);
+
+            let relative = index - period;
+            if relative < period - 2 {
+                adx += dx;
+            } else if relative == period - 2 {
+                adx += dx;
+                history[history_index] = adx * invper;
+                history_index += 1;
+                if history_index == history_len {
+                    history_index = 0;
+                }
+            } else {
+                adx = adx * per + dx;
+                if index >= lookback {
+                    outputs[0][out_index] = 0.5 * (adx * invper + history[history_index]);
+                    out_index += 1;
+                }
+                history[history_index] = adx * invper;
+                history_index += 1;
+                if history_index == history_len {
+                    history_index = 0;
+                }
+            }
+        }
+
+        Ok(out_index)
     }
 
     fn create_stream(

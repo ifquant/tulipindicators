@@ -50,6 +50,35 @@ impl Indicator for Sma {
         Ok(vec![output])
     }
 
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options, METADATA.name)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+
+        if output_len == 0 {
+            return Ok(0);
+        }
+
+        let scale = 1.0 / period as Real;
+        let mut sum: Real = input.iter().take(period).sum();
+        outputs[0][0] = sum * scale;
+
+        for index in period..input.len() {
+            sum += input[index];
+            sum -= input[index - period];
+            outputs[0][index - period + 1] = sum * scale;
+        }
+
+        Ok(output_len)
+    }
+
     fn create_stream(
         &self,
         options: &[Real],
