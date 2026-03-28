@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{double_input, expect_option_count, parse_usize_option};
 use crate::indicators::shared::{directional_ratio, DirectionalMovementState};
@@ -28,16 +30,26 @@ impl Indicator for Dx {
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let (high, low) = double_input(METADATA.name, inputs)?;
-        let mut state = DirectionalMovementState::new(parse_period(options)?);
-        let mut output = Vec::new();
-
-        for (&high_value, &low_value) in high.iter().zip(low.iter()) {
-            if let Some((up, down)) = state.feed(high_value, low_value) {
-                output.push(directional_ratio(up, down));
-            }
-        }
-
+        let period = parse_period(options)?;
+        let output_len = high.len().saturating_sub(period.saturating_sub(1));
+        let mut output = vec![0.0; output_len];
+        let produced = run_dx_batch(high, low, period, &mut output);
+        debug_assert_eq!(produced, output_len);
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = high.len().saturating_sub(period.saturating_sub(1));
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_dx_batch(high, low, period, &mut outputs[0][..output_len]))
     }
 
     fn create_stream(
@@ -89,4 +101,44 @@ impl IndicatorStream for DxStream {
 fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {
     expect_option_count(METADATA.name, options, 1)?;
     parse_usize_option(METADATA.name, options, 0, "period", 1)
+}
+
+fn run_dx_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if high.len() <= period.saturating_sub(1) {
+        return 0;
+    }
+
+    let mut up = 0.0;
+    let mut down = 0.0;
+
+    for index in 1..period {
+        let (current_up, current_down) =
+            crate::indicators::shared::directional_movement(
+                high[index - 1],
+                high[index],
+                low[index - 1],
+                low[index],
+            );
+        up += current_up;
+        down += current_down;
+    }
+
+    output[0] = directional_ratio(up, down);
+    let mut out_index = 1usize;
+    let per = (period - 1) as Real / period as Real;
+
+    for index in period..high.len() {
+        let (current_up, current_down) = crate::indicators::shared::directional_movement(
+            high[index - 1],
+            high[index],
+            low[index - 1],
+            low[index],
+        );
+        up = up.mul_add(per, current_up);
+        down = down.mul_add(per, current_down);
+        output[out_index] = directional_ratio(up, down);
+        out_index += 1;
+    }
+
+    out_index
 }
