@@ -312,20 +312,28 @@ impl Indicator for Decay {
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(DECAY_METADATA.name, inputs)?;
         let period = parse_positive_period(DECAY_METADATA.name, options)?;
-        let mut output = Vec::with_capacity(input.len());
-
-        if let Some((&first, rest)) = input.split_first() {
-            let scale = 1.0 / period as Real;
-            let mut last = first;
-            output.push(last);
-            for &sample in rest {
-                let decayed = last - scale;
-                last = sample.max(decayed);
-                output.push(last);
-            }
-        }
-
+        let mut output = vec![0.0; input.len()];
+        let produced = run_decay_batch(input, 1.0 / period as Real, false, &mut output);
+        debug_assert_eq!(produced, input.len());
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(DECAY_METADATA.name, inputs)?;
+        let period = parse_positive_period(DECAY_METADATA.name, options)?;
+        validate_output_slices(&DECAY_METADATA, outputs, 1)?;
+        ensure_output_len(&DECAY_METADATA, outputs[0].len(), input.len(), 0)?;
+        Ok(run_decay_batch(
+            input,
+            1.0 / period as Real,
+            false,
+            &mut outputs[0][..input.len()],
+        ))
     }
 
     fn create_stream(
@@ -359,20 +367,28 @@ impl Indicator for EDecay {
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(EDECAY_METADATA.name, inputs)?;
         let period = parse_positive_period(EDECAY_METADATA.name, options)?;
-        let mut output = Vec::with_capacity(input.len());
-
-        if let Some((&first, rest)) = input.split_first() {
-            let scale = 1.0 - 1.0 / period as Real;
-            let mut last = first;
-            output.push(last);
-            for &sample in rest {
-                let decayed = last * scale;
-                last = sample.max(decayed);
-                output.push(last);
-            }
-        }
-
+        let mut output = vec![0.0; input.len()];
+        let produced = run_decay_batch(input, 1.0 - 1.0 / period as Real, true, &mut output);
+        debug_assert_eq!(produced, input.len());
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(EDECAY_METADATA.name, inputs)?;
+        let period = parse_positive_period(EDECAY_METADATA.name, options)?;
+        validate_output_slices(&EDECAY_METADATA, outputs, 1)?;
+        ensure_output_len(&EDECAY_METADATA, outputs[0].len(), input.len(), 0)?;
+        Ok(run_decay_batch(
+            input,
+            1.0 - 1.0 / period as Real,
+            true,
+            &mut outputs[0][..input.len()],
+        ))
     }
 
     fn create_stream(
@@ -396,6 +412,25 @@ struct DecayStream {
     last: Option<Real>,
     progress: usize,
     exponential: bool,
+}
+
+fn run_decay_batch(input: &[Real], scale: Real, exponential: bool, output: &mut [Real]) -> usize {
+    if let Some((&first, rest)) = input.split_first() {
+        output[0] = first;
+        let mut last = first;
+        for (dst, &sample) in output[1..].iter_mut().zip(rest.iter()) {
+            let decayed = if exponential {
+                last * scale
+            } else {
+                last - scale
+            };
+            last = sample.max(decayed);
+            *dst = last;
+        }
+        input.len()
+    } else {
+        0
+    }
 }
 
 impl IndicatorStream for DecayStream {
