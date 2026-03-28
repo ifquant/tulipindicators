@@ -108,6 +108,8 @@ fn default_options(indicator: &str) -> Vec<Real> {
     match indicator {
         "bbands" => vec![5.0, 2.0],
         "macd" => vec![12.0, 26.0, 9.0],
+        "psar" => vec![0.02, 0.2],
+        "ultosc" => vec![5.0, 7.0, 10.0],
         "vidya" => vec![2.0, 5.0, 0.2],
         _ => {
             let option_count = find(indicator)

@@ -1,7 +1,8 @@
 use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
-    Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Di, Dm, Dpo, Dx, Emv, Macd, Mass, Mom, Natr, Ppo,
-    Roc, Rocr, Rsi, StdDev, StdErr, Stoch, StochRsi, Trix, Var, Vhf, Volatility, WillR,
+    Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Di, Dm, Dpo, Dx, Emv, Kvo, Macd, Mass, Mfi, Mom,
+    Natr, Ppo, Psar, Roc, Rocr, Rsi, StdDev, StdErr, Stoch, StochRsi, Trix, UltOsc, Var, Vhf,
+    Volatility, WillR,
 };
 use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, Min, Sum};
 use crate::indicators::overlay::{
@@ -46,6 +47,7 @@ pub static EXP: Exp = Exp;
 pub static FLOOR: Floor = Floor;
 pub static HMA: Hma = Hma;
 pub static KAMA: Kama = Kama;
+pub static KVO: Kvo = Kvo;
 pub static LAG: Lag = Lag;
 pub static LN: Ln = Ln;
 pub static LOG10: Log10 = Log10;
@@ -53,11 +55,13 @@ pub static MACD: Macd = Macd;
 pub static MAX: Max = Max;
 pub static MEDPRICE: MedPrice = MedPrice;
 pub static MASS: Mass = Mass;
+pub static MFI: Mfi = Mfi;
 pub static MIN: Min = Min;
 pub static MOM: Mom = Mom;
 pub static MUL: Mul = Mul;
 pub static NATR: Natr = Natr;
 pub static PPO: Ppo = Ppo;
+pub static PSAR: Psar = Psar;
 pub static ROC: Roc = Roc;
 pub static ROCR: Rocr = Rocr;
 pub static RSI: Rsi = Rsi;
@@ -81,6 +85,7 @@ pub static TRIMA: Trima = Trima;
 pub static TRIX: Trix = Trix;
 pub static TRUNC: Trunc = Trunc;
 pub static TYPPRICE: TypPrice = TypPrice;
+pub static ULTOSC: UltOsc = UltOsc;
 pub static VAR: Var = Var;
 pub static VHF: Vhf = Vhf;
 pub static VIDYA: Vidya = Vidya;
@@ -92,7 +97,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 78] {
+pub fn all() -> [&'static dyn Indicator; 82] {
     [
         &ABS,
         &ACOS,
@@ -127,6 +132,7 @@ pub fn all() -> [&'static dyn Indicator; 78] {
         &FLOOR,
         &HMA,
         &KAMA,
+        &KVO,
         &LAG,
         &LN,
         &LOG10,
@@ -134,11 +140,13 @@ pub fn all() -> [&'static dyn Indicator; 78] {
         &MASS,
         &MAX,
         &MEDPRICE,
+        &MFI,
         &MIN,
         &MOM,
         &MUL,
         &NATR,
         &PPO,
+        &PSAR,
         &ROC,
         &ROCR,
         &ROUND,
@@ -162,6 +170,7 @@ pub fn all() -> [&'static dyn Indicator; 78] {
         &TRIX,
         &TRUNC,
         &TYPPRICE,
+        &ULTOSC,
         &VAR,
         &VHF,
         &VIDYA,
@@ -210,6 +219,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "floor" => Some(&FLOOR),
         "hma" => Some(&HMA),
         "kama" => Some(&KAMA),
+        "kvo" => Some(&KVO),
         "lag" => Some(&LAG),
         "ln" => Some(&LN),
         "log10" => Some(&LOG10),
@@ -218,10 +228,12 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "max" => Some(&MAX),
         "medprice" => Some(&MEDPRICE),
         "min" => Some(&MIN),
+        "mfi" => Some(&MFI),
         "mom" => Some(&MOM),
         "mul" => Some(&MUL),
         "natr" => Some(&NATR),
         "ppo" => Some(&PPO),
+        "psar" => Some(&PSAR),
         "roc" => Some(&ROC),
         "rocr" => Some(&ROCR),
         "rsi" => Some(&RSI),
@@ -245,6 +257,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "trix" => Some(&TRIX),
         "trunc" => Some(&TRUNC),
         "typprice" => Some(&TYPPRICE),
+        "ultosc" => Some(&ULTOSC),
         "var" => Some(&VAR),
         "vhf" => Some(&VHF),
         "vidya" => Some(&VIDYA),
