@@ -120,7 +120,7 @@ impl IndicatorStream for ZlemaStream {
         for &sample in input {
             if self.lag == 0 {
                 let next = match self.value {
-                    Some(value) => (sample - value) * self.multiplier + value,
+                    Some(value) => (sample - value).mul_add(self.multiplier, value),
                     None => sample,
                 };
                 self.value = Some(next);
@@ -143,7 +143,8 @@ impl IndicatorStream for ZlemaStream {
                 self.history[self.cursor] = sample;
                 self.cursor = (self.cursor + 1) % self.lag;
                 let previous = self.value.expect("zlema value should be initialized");
-                let next = ((sample + (sample - lagged)) - previous) * self.multiplier + previous;
+                let next =
+                    ((sample + (sample - lagged)) - previous).mul_add(self.multiplier, previous);
                 self.value = Some(next);
                 outputs[0][out_index] = next;
                 out_index += 1;
@@ -178,7 +179,7 @@ fn run_zlema_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize 
         output[0] = value;
         let mut out_index = 1usize;
         for &sample in &input[1..] {
-            value = (sample - value) * per + value;
+            value = (sample - value).mul_add(per, value);
             output[out_index] = value;
             out_index += 1;
         }
@@ -191,7 +192,7 @@ fn run_zlema_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize 
     for index in lag..input.len() {
         let current = input[index];
         let lagged = input[index - lag];
-        value = ((current + (current - lagged)) - value) * per + value;
+        value = ((current + (current - lagged)) - value).mul_add(per, value);
         output[out_index] = value;
         out_index += 1;
     }

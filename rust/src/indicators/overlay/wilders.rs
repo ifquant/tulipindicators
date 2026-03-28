@@ -94,7 +94,7 @@ impl WildersStream {
         }
 
         let current = self.value.expect("wilders stream should be initialized");
-        let next = (sample - current) / self.period as Real + current;
+        let next = (sample - current).mul_add(1.0 / self.period as Real, current);
         self.value = Some(next);
         self.progress += 1;
         Some(next)
@@ -170,7 +170,7 @@ fn run_wilders_batch(input: &[Real], period: usize, output: &mut [Real]) -> usiz
 
         for _ in period..input.len() {
             let sample = *input_ptr;
-            value = (sample - value) * per + value;
+            value = (sample - value).mul_add(per, value);
             *out_ptr = value;
             input_ptr = input_ptr.add(1);
             out_ptr = out_ptr.add(1);
