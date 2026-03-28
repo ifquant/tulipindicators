@@ -91,9 +91,9 @@ impl Kama {
             } else {
                 1.0
             };
-            let alpha = er * (FAST_PER - SLOW_PER) + SLOW_PER;
+            let alpha = er.mul_add(FAST_PER - SLOW_PER, SLOW_PER);
             let sc = alpha * alpha;
-            kama += sc * (input[index] - kama);
+            kama = (input[index] - kama).mul_add(sc, kama);
             output[out_index] = kama;
             out_index += 1;
         }
@@ -180,10 +180,10 @@ impl IndicatorStream for KamaStream {
                 } else {
                     1.0
                 };
-                let alpha = er * (FAST_PER - SLOW_PER) + SLOW_PER;
+                let alpha = er.mul_add(FAST_PER - SLOW_PER, SLOW_PER);
                 let sc = alpha * alpha;
                 let current = self.value.unwrap_or(*sample);
-                let next = current + sc * (*sample - current);
+                let next = (*sample - current).mul_add(sc, current);
                 self.value = Some(next);
                 outputs[0][out_index] = next;
                 out_index += 1;
