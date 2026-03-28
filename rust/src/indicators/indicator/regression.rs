@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 
@@ -70,12 +72,39 @@ impl Indicator for LinReg {
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let period = parse_period(LINREG_METADATA.name, options)?;
-        let mut stream = RegressionProjectionStream::new(
-            &LINREG_METADATA,
+        let input = single_input(LINREG_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
+        }
+        let mut output = vec![0.0; output_len];
+        let written = run_regression_batch(
+            input,
             period,
             RegressionProjection::ValueAt(period as Real),
-        )?;
-        stream.feed(inputs)
+            &mut output,
+        );
+        debug_assert_eq!(written, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let period = parse_period(LINREG_METADATA.name, options)?;
+        let input = single_input(LINREG_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&LINREG_METADATA, outputs, 1)?;
+        ensure_output_len(&LINREG_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_regression_batch(
+            input,
+            period,
+            RegressionProjection::ValueAt(period as Real),
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -102,12 +131,39 @@ impl Indicator for LinRegIntercept {
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let period = parse_period(LINREGINTERCEPT_METADATA.name, options)?;
-        let mut stream = RegressionProjectionStream::new(
-            &LINREGINTERCEPT_METADATA,
+        let input = single_input(LINREGINTERCEPT_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
+        }
+        let mut output = vec![0.0; output_len];
+        let written = run_regression_batch(
+            input,
             period,
             RegressionProjection::ValueAt(1.0),
-        )?;
-        stream.feed(inputs)
+            &mut output,
+        );
+        debug_assert_eq!(written, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let period = parse_period(LINREGINTERCEPT_METADATA.name, options)?;
+        let input = single_input(LINREGINTERCEPT_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&LINREGINTERCEPT_METADATA, outputs, 1)?;
+        ensure_output_len(&LINREGINTERCEPT_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_regression_batch(
+            input,
+            period,
+            RegressionProjection::ValueAt(1.0),
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -134,12 +190,34 @@ impl Indicator for LinRegSlope {
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let period = parse_period(LINREGSLOPE_METADATA.name, options)?;
-        let mut stream = RegressionProjectionStream::new(
-            &LINREGSLOPE_METADATA,
+        let input = single_input(LINREGSLOPE_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
+        }
+        let mut output = vec![0.0; output_len];
+        let written = run_regression_batch(input, period, RegressionProjection::Slope, &mut output);
+        debug_assert_eq!(written, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let period = parse_period(LINREGSLOPE_METADATA.name, options)?;
+        let input = single_input(LINREGSLOPE_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&LINREGSLOPE_METADATA, outputs, 1)?;
+        ensure_output_len(&LINREGSLOPE_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_regression_batch(
+            input,
             period,
             RegressionProjection::Slope,
-        )?;
-        stream.feed(inputs)
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -166,12 +244,39 @@ impl Indicator for Tsf {
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let period = parse_period(TSF_METADATA.name, options)?;
-        let mut stream = RegressionProjectionStream::new(
-            &TSF_METADATA,
+        let input = single_input(TSF_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
+        }
+        let mut output = vec![0.0; output_len];
+        let written = run_regression_batch(
+            input,
             period,
             RegressionProjection::ValueAt(period as Real + 1.0),
-        )?;
-        stream.feed(inputs)
+            &mut output,
+        );
+        debug_assert_eq!(written, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let period = parse_period(TSF_METADATA.name, options)?;
+        let input = single_input(TSF_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&TSF_METADATA, outputs, 1)?;
+        ensure_output_len(&TSF_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_regression_batch(
+            input,
+            period,
+            RegressionProjection::ValueAt(period as Real + 1.0),
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -197,8 +302,56 @@ impl Indicator for Fosc {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = FoscStream::new(options)?;
-        stream.feed(inputs)
+        let period = parse_period(FOSC_METADATA.name, options)?;
+        let input = single_input(FOSC_METADATA.name, inputs)?;
+        if input.len() <= period {
+            return Ok(vec![Vec::new()]);
+        }
+
+        let mut regression = vec![0.0; input.len().saturating_sub(period - 1)];
+        let regression_len = run_regression_batch(
+            input,
+            period,
+            RegressionProjection::ValueAt(period as Real + 1.0),
+            &mut regression,
+        );
+        let mut output = Vec::with_capacity(regression_len.saturating_sub(1));
+        for index in 1..regression_len {
+            let sample = input[period - 1 + index];
+            output.push(100.0 * (sample - regression[index - 1]) / sample);
+        }
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let period = parse_period(FOSC_METADATA.name, options)?;
+        let input = single_input(FOSC_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period);
+        validate_output_slices(&FOSC_METADATA, outputs, 1)?;
+        ensure_output_len(&FOSC_METADATA, outputs[0].len(), output_len, 0)?;
+        if input.len() <= period {
+            return Ok(0);
+        }
+
+        let mut regression = vec![0.0; input.len().saturating_sub(period - 1)];
+        let regression_len = run_regression_batch(
+            input,
+            period,
+            RegressionProjection::ValueAt(period as Real + 1.0),
+            &mut regression,
+        );
+        let mut out_index = 0usize;
+        for index in 1..regression_len {
+            let sample = input[period - 1 + index];
+            outputs[0][out_index] = 100.0 * (sample - regression[index - 1]) / sample;
+            out_index += 1;
+        }
+        Ok(out_index)
     }
 
     fn create_stream(
@@ -212,6 +365,55 @@ impl Indicator for Fosc {
 enum RegressionProjection {
     ValueAt(Real),
     Slope,
+}
+
+fn run_regression_batch(
+    input: &[Real],
+    period: usize,
+    projection: RegressionProjection,
+    output: &mut [Real],
+) -> usize {
+    if input.len() < period {
+        return 0;
+    }
+
+    let mut x_sum = 0.0;
+    let mut x2_sum = 0.0;
+    let mut y_sum = 0.0;
+    let mut xy_sum = 0.0;
+
+    for index in 0..(period - 1) {
+        let x = (index + 1) as Real;
+        x_sum += x;
+        x2_sum += x * x;
+        xy_sum += input[index] * x;
+        y_sum += input[index];
+    }
+
+    let period_real = period as Real;
+    x_sum += period_real;
+    x2_sum += period_real * period_real;
+    let inv_denom = 1.0 / (period_real * x2_sum - x_sum * x_sum);
+    let inv_period = 1.0 / period_real;
+
+    let mut out_index = 0usize;
+    for index in (period - 1)..input.len() {
+        xy_sum += input[index] * period_real;
+        y_sum += input[index];
+
+        let slope = (period_real * xy_sum - x_sum * y_sum) * inv_denom;
+        let intercept0 = (y_sum - slope * x_sum) * inv_period;
+        output[out_index] = match projection {
+            RegressionProjection::ValueAt(x) => intercept0 + slope * x,
+            RegressionProjection::Slope => slope,
+        };
+        out_index += 1;
+
+        xy_sum -= y_sum;
+        y_sum -= input[index + 1 - period];
+    }
+
+    out_index
 }
 
 struct RegressionProjectionStream {
