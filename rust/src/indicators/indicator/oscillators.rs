@@ -188,8 +188,32 @@ impl Indicator for Fisher {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = FisherStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low) = double_input(FISHER_METADATA.name, inputs)?;
+        let period = parse_period(FISHER_METADATA.name, options)?;
+        let output_len = high.len().saturating_sub(period - 1);
+        let mut fisher = vec![0.0; output_len];
+        let mut signal = vec![0.0; output_len];
+        let produced = run_fisher_batch(high, low, period, &mut fisher, &mut signal);
+        debug_assert_eq!(produced, output_len);
+        Ok(vec![fisher, signal])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(FISHER_METADATA.name, inputs)?;
+        let period = parse_period(FISHER_METADATA.name, options)?;
+        let output_len = high.len().saturating_sub(period - 1);
+        validate_output_slices(&FISHER_METADATA, outputs, 2)?;
+        ensure_output_len(&FISHER_METADATA, outputs[0].len(), output_len, 0)?;
+        ensure_output_len(&FISHER_METADATA, outputs[1].len(), output_len, 1)?;
+        let (first, second) = outputs.split_at_mut(1);
+        let fisher_out = &mut first[0][..output_len];
+        let signal_out = &mut second[0][..output_len];
+        Ok(run_fisher_batch(high, low, period, fisher_out, signal_out))
     }
 
     fn create_stream(
@@ -588,6 +612,52 @@ impl IndicatorStream for FisherStream {
 
         Ok(vec![fisher, signal])
     }
+}
+
+fn run_fisher_batch(
+    high: &[Real],
+    low: &[Real],
+    period: usize,
+    fisher_out: &mut [Real],
+    signal_out: &mut [Real],
+) -> usize {
+    if high.len() < period {
+        return 0;
+    }
+
+    let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
+    let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+    let mut val1 = 0.0;
+    let mut fish = 0.0;
+
+    for (index, (&high, &low)) in high.iter().zip(low.iter()).enumerate() {
+        let hl = 0.5 * (high + low);
+        max_queue.push(index, hl);
+        min_queue.push(index, hl);
+
+        if index + 1 >= period {
+            let window_start = index + 1 - period;
+            max_queue.evict_before(window_start);
+            min_queue.evict_before(window_start);
+
+            let max = max_queue.front_value();
+            let min = min_queue.front_value();
+            let mut mm = max - min;
+            if mm == 0.0 {
+                mm = 0.001;
+            }
+
+            val1 = 0.33 * 2.0 * ((hl - min) / mm - 0.5) + 0.67 * val1;
+            val1 = val1.clamp(-0.999, 0.999);
+
+            let out_index = index + 1 - period;
+            signal_out[out_index] = fish;
+            fish = 0.5 * ((1.0 + val1) / (1.0 - val1)).ln() + 0.5 * fish;
+            fisher_out[out_index] = fish;
+        }
+    }
+
+    fisher_out.len()
 }
 
 struct MdStream {
