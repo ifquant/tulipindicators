@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::double_input;
 use crate::indicators::shared::RingSum;
@@ -26,8 +28,28 @@ impl Indicator for Ao {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = AoStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low) = double_input(METADATA.name, inputs)?;
+        let mut output = vec![0.0; high.len().saturating_sub(33)];
+        let output_len = run_ao_batch(high, low, options, &mut output)?;
+        output.truncate(output_len);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(
+            &METADATA,
+            outputs[0].len(),
+            high.len().saturating_sub(33),
+            0,
+        )?;
+        run_ao_batch(high, low, options, outputs[0])
     }
 
     fn create_stream(
@@ -89,4 +111,47 @@ impl IndicatorStream for AoStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_ao_batch(
+    high: &[Real],
+    low: &[Real],
+    options: &[Real],
+    output: &mut [Real],
+) -> Result<usize, IndicatorError> {
+    if !options.is_empty() {
+        return Err(IndicatorError::WrongOptionCount {
+            indicator: METADATA.name,
+            expected: 0,
+            actual: options.len(),
+        });
+    }
+
+    if high.len() <= 33 {
+        return Ok(0);
+    }
+
+    let mut sum34 = 0.0;
+    let mut sum5 = 0.0;
+
+    for index in 0..34 {
+        let hl = 0.5 * (high[index] + low[index]);
+        sum34 += hl;
+        if index >= 29 {
+            sum5 += hl;
+        }
+    }
+
+    output[0] = sum5 / 5.0 - sum34 / 34.0;
+    let mut out_index = 1;
+
+    for index in 34..high.len() {
+        let hl = 0.5 * (high[index] + low[index]);
+        sum34 += hl - 0.5 * (high[index - 34] + low[index - 34]);
+        sum5 += hl - 0.5 * (high[index - 5] + low[index - 5]);
+        output[out_index] = sum5 / 5.0 - sum34 / 34.0;
+        out_index += 1;
+    }
+
+    Ok(out_index)
 }
