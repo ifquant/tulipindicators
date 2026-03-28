@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{double_input, expect_option_count, single_input};
 use std::f64::consts::PI;
@@ -86,6 +88,25 @@ fn run_unary(
     Ok(vec![output])
 }
 
+fn run_unary_in_place(
+    metadata: &'static IndicatorMetadata,
+    inputs: &[&[Real]],
+    options: &[Real],
+    outputs: &mut [&mut [Real]],
+    op: fn(Real) -> Real,
+) -> Result<usize, IndicatorError> {
+    expect_option_count(metadata.name, options, 0)?;
+    let input = single_input(metadata.name, inputs)?;
+    validate_output_slices(metadata, outputs, 1)?;
+    ensure_output_len(metadata, outputs[0].len(), input.len(), 0)?;
+
+    for (dst, &sample) in outputs[0][..input.len()].iter_mut().zip(input.iter()) {
+        *dst = op(sample);
+    }
+
+    Ok(input.len())
+}
+
 fn run_binary(
     metadata: &'static IndicatorMetadata,
     inputs: &[&[Real]],
@@ -100,6 +121,29 @@ fn run_binary(
         .map(|(&lhs, &rhs)| op(lhs, rhs))
         .collect();
     Ok(vec![output])
+}
+
+fn run_binary_in_place(
+    metadata: &'static IndicatorMetadata,
+    inputs: &[&[Real]],
+    options: &[Real],
+    outputs: &mut [&mut [Real]],
+    op: fn(Real, Real) -> Real,
+) -> Result<usize, IndicatorError> {
+    expect_option_count(metadata.name, options, 0)?;
+    let (left, right) = double_input(metadata.name, inputs)?;
+    validate_output_slices(metadata, outputs, 1)?;
+    ensure_output_len(metadata, outputs[0].len(), left.len(), 0)?;
+
+    for ((dst, &lhs), &rhs) in outputs[0][..left.len()]
+        .iter_mut()
+        .zip(left.iter())
+        .zip(right.iter())
+    {
+        *dst = op(lhs, rhs);
+    }
+
+    Ok(left.len())
 }
 
 fn abs_op(sample: Real) -> Real {
@@ -230,6 +274,15 @@ macro_rules! define_unary_indicator {
                 run_unary(&$metadata, inputs, options, $op)
             }
 
+            fn run_in_place(
+                &self,
+                inputs: &[&[Real]],
+                options: &[Real],
+                outputs: &mut [&mut [Real]],
+            ) -> Result<usize, IndicatorError> {
+                run_unary_in_place(&$metadata, inputs, options, outputs, $op)
+            }
+
             fn create_stream(
                 &self,
                 options: &[Real],
@@ -271,6 +324,15 @@ macro_rules! define_binary_indicator {
                 options: &[Real],
             ) -> Result<Vec<Vec<Real>>, IndicatorError> {
                 run_binary(&$metadata, inputs, options, $op)
+            }
+
+            fn run_in_place(
+                &self,
+                inputs: &[&[Real]],
+                options: &[Real],
+                outputs: &mut [&mut [Real]],
+            ) -> Result<usize, IndicatorError> {
+                run_binary_in_place(&$metadata, inputs, options, outputs, $op)
             }
 
             fn create_stream(

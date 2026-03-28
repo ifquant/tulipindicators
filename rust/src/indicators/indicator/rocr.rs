@@ -1,5 +1,8 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, output_len_for_input, validate_output_slices, Indicator, IndicatorMetadata,
+    IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 
@@ -25,8 +28,35 @@ impl Indicator for Rocr {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = RocrStream::new(options)?;
-        stream.feed(inputs)
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = output_len_for_input(input.len(), period);
+        let mut output = Vec::with_capacity(output_len);
+
+        for index in period..input.len() {
+            output.push(input[index] / input[index - period]);
+        }
+
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = output_len_for_input(input.len(), period);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+
+        for (dst, index) in outputs[0][..output_len].iter_mut().zip(period..input.len()) {
+            *dst = input[index] / input[index - period];
+        }
+
+        Ok(output_len)
     }
 
     fn create_stream(

@@ -19,11 +19,22 @@ pub enum IndicatorError {
         expected: usize,
         actual: usize,
     },
+    WrongOutputCount {
+        indicator: &'static str,
+        expected: usize,
+        actual: usize,
+    },
     InputLengthMismatch {
         indicator: &'static str,
         expected: usize,
         actual: usize,
         input_index: usize,
+    },
+    OutputTooSmall {
+        indicator: &'static str,
+        output_index: usize,
+        expected: usize,
+        actual: usize,
     },
 }
 
@@ -52,6 +63,11 @@ impl fmt::Display for IndicatorError {
                 expected,
                 actual,
             } => write!(f, "{indicator}: expected {expected} options, got {actual}"),
+            Self::WrongOutputCount {
+                indicator,
+                expected,
+                actual,
+            } => write!(f, "{indicator}: expected {expected} output buffers, got {actual}"),
             Self::InputLengthMismatch {
                 indicator,
                 expected,
@@ -60,6 +76,15 @@ impl fmt::Display for IndicatorError {
             } => write!(
                 f,
                 "{indicator}: input series {input_index} has length {actual}, expected {expected}"
+            ),
+            Self::OutputTooSmall {
+                indicator,
+                output_index,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "{indicator}: output buffer {output_index} has length {actual}, expected at least {expected}"
             ),
         }
     }

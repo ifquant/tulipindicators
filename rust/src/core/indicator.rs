@@ -15,6 +15,25 @@ pub trait Indicator: Sync {
     fn metadata(&self) -> &'static IndicatorMetadata;
     fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError>;
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError>;
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let computed = self.run(inputs, options)?;
+        validate_output_slices(self.metadata(), outputs, computed.len())?;
+        for (output_index, values) in computed.iter().enumerate() {
+            ensure_output_len(
+                self.metadata(),
+                outputs[output_index].len(),
+                values.len(),
+                output_index,
+            )?;
+            outputs[output_index][..values.len()].copy_from_slice(values);
+        }
+        Ok(computed.first().map_or(0, Vec::len))
+    }
 
     fn create_stream(
         &self,
@@ -29,4 +48,40 @@ pub trait IndicatorStream {
     fn metadata(&self) -> &'static IndicatorMetadata;
     fn progress(&self) -> usize;
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError>;
+}
+
+pub fn output_len_for_input(input_len: usize, lookback: usize) -> usize {
+    input_len.saturating_sub(lookback)
+}
+
+pub fn validate_output_slices(
+    metadata: &IndicatorMetadata,
+    outputs: &[&mut [Real]],
+    expected: usize,
+) -> Result<(), IndicatorError> {
+    if outputs.len() != expected {
+        return Err(IndicatorError::WrongOutputCount {
+            indicator: metadata.name,
+            expected,
+            actual: outputs.len(),
+        });
+    }
+    Ok(())
+}
+
+pub fn ensure_output_len(
+    metadata: &IndicatorMetadata,
+    actual: usize,
+    expected: usize,
+    output_index: usize,
+) -> Result<(), IndicatorError> {
+    if actual < expected {
+        return Err(IndicatorError::OutputTooSmall {
+            indicator: metadata.name,
+            output_index,
+            expected,
+            actual,
+        });
+    }
+    Ok(())
 }

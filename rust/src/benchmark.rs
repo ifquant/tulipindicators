@@ -1,5 +1,5 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::Indicator;
+use crate::core::indicator::{output_len_for_input, Indicator};
 use crate::core::types::Real;
 use crate::registry;
 use std::fmt::Write as _;
@@ -228,19 +228,39 @@ fn run_batch_benchmark(
     config: &BenchmarkConfig,
 ) -> Result<BenchmarkResult, IndicatorError> {
     let inputs: Vec<&[Real]> = scenario.inputs.iter().map(Vec::as_slice).collect();
-    let sample_outputs = scenario.indicator.run(&inputs, &scenario.options)?;
-    let total_outputs = sample_outputs.iter().map(Vec::len).sum();
+    let metadata = scenario.indicator.metadata();
+    let lookback = scenario.indicator.lookback(&scenario.options)?;
+    let output_len = output_len_for_input(scenario.inputs[0].len(), lookback);
+    let total_outputs = output_len * metadata.output_names.len();
+    let mut output_buffers = vec![vec![0.0; output_len]; metadata.output_names.len()];
     let iterations = choose_iterations(scenario.inputs[0].len(), config);
+    {
+        let mut outputs: Vec<&mut [Real]> =
+            output_buffers.iter_mut().map(Vec::as_mut_slice).collect();
+        let produced = scenario
+            .indicator
+            .run_in_place(&inputs, &scenario.options, &mut outputs)?;
+        debug_assert_eq!(produced, output_len);
+    }
 
     let start = Instant::now();
     for _ in 0..iterations {
-        let outputs = scenario.indicator.run(&inputs, &scenario.options)?;
-        black_box(outputs.iter().map(Vec::len).sum::<usize>());
+        let mut outputs: Vec<&mut [Real]> =
+            output_buffers.iter_mut().map(Vec::as_mut_slice).collect();
+        let produced = scenario
+            .indicator
+            .run_in_place(&inputs, &scenario.options, &mut outputs)?;
+        let sink = outputs
+            .first()
+            .and_then(|output| output.get(produced.saturating_sub(1)))
+            .copied()
+            .unwrap_or(0.0);
+        black_box((produced, sink));
     }
     let elapsed = start.elapsed();
 
     Ok(BenchmarkResult {
-        indicator: scenario.indicator.metadata().name,
+        indicator: metadata.name,
         mode: BenchmarkMode::Batch,
         input_len: scenario.inputs[0].len(),
         iterations,
