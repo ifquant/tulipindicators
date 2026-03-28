@@ -179,8 +179,8 @@ fn run_apo_batch(
     let mut out_index = 0usize;
 
     for &sample in &input[1..] {
-        short_ema = (sample - short_ema) * short_per + short_ema;
-        long_ema = (sample - long_ema) * long_per + long_ema;
+        short_ema = (sample - short_ema).mul_add(short_per, short_ema);
+        long_ema = (sample - long_ema).mul_add(long_per, long_ema);
         output[out_index] = short_ema - long_ema;
         out_index += 1;
     }
