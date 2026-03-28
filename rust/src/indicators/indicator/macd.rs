@@ -157,7 +157,7 @@ impl IndicatorStream for MacdStream {
                 if index >= self.long_period - 1 {
                     let signal_value = match self.signal_ema {
                         Some(current) if index > self.long_period - 1 => {
-                            (macd_value - current) * self.signal_multiplier + current
+                            (macd_value - current).mul_add(self.signal_multiplier, current)
                         }
                         Some(current) => current,
                         None => macd_value,
@@ -229,8 +229,8 @@ fn run_macd_batch(
     let mut out_index = 0usize;
 
     for (index, sample) in input.iter().enumerate().skip(1) {
-        short_ema = (*sample - short_ema) * short_per + short_ema;
-        long_ema = (*sample - long_ema) * long_per + long_ema;
+        short_ema = (*sample - short_ema).mul_add(short_per, short_ema);
+        long_ema = (*sample - long_ema).mul_add(long_per, long_ema);
         let macd_value = short_ema - long_ema;
 
         if index == long_period - 1 {
@@ -238,7 +238,7 @@ fn run_macd_batch(
         }
 
         if index >= long_period - 1 {
-            signal_ema = (macd_value - signal_ema) * signal_per + signal_ema;
+            signal_ema = (macd_value - signal_ema).mul_add(signal_per, signal_ema);
             macd[out_index] = macd_value;
             signal[out_index] = signal_ema;
             hist[out_index] = macd_value - signal_ema;

@@ -113,8 +113,9 @@ impl IndicatorStream for RsiStream {
                             output.push(rsi_value(self.smooth_up, self.smooth_down));
                         }
                     } else {
-                        self.smooth_up = (upward - self.smooth_up) * per + self.smooth_up;
-                        self.smooth_down = (downward - self.smooth_down) * per + self.smooth_down;
+                        self.smooth_up = (upward - self.smooth_up).mul_add(per, self.smooth_up);
+                        self.smooth_down =
+                            (downward - self.smooth_down).mul_add(per, self.smooth_down);
                         output.push(rsi_value(self.smooth_up, self.smooth_down));
                     }
 
@@ -220,8 +221,8 @@ fn run_rsi_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
         let upward = delta.max(0.0);
         let downward = (-delta).max(0.0);
 
-        smooth_up = (upward - smooth_up) * per + smooth_up;
-        smooth_down = (downward - smooth_down) * per + smooth_down;
+        smooth_up = (upward - smooth_up).mul_add(per, smooth_up);
+        smooth_down = (downward - smooth_down).mul_add(per, smooth_down);
         output[out_index] = rsi_value(smooth_up, smooth_down);
         out_index += 1;
     }
