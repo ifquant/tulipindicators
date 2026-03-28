@@ -68,6 +68,33 @@ struct CandleMetadata {
     pattern: CandleSet,
 }
 
+#[derive(Debug, Clone)]
+struct TargetedCandleCase {
+    name: &'static str,
+    pattern: CandleSet,
+    config: CandleConfig,
+    inputs: [Vec<f64>; 4],
+    hit_indices: &'static [usize],
+}
+
+fn targeted_candle_cases() -> Vec<TargetedCandleCase> {
+    vec![TargetedCandleCase {
+        name: "shooting_star",
+        pattern: TC_SHOOTING_STAR,
+        config: CandleConfig {
+            period: 3,
+            ..CandleConfig::default()
+        },
+        inputs: [
+            vec![10.0, 8.0, 8.0, 12.0],
+            vec![12.5, 10.5, 10.5, 14.2],
+            vec![9.5, 7.5, 7.5, 12.0],
+            vec![12.0, 10.0, 10.0, 12.1],
+        ],
+        hit_indices: &[3],
+    }]
+}
+
 #[test]
 fn rust_candles_match_named_fixture_expectations() {
     for case in parse_candle_cases(CANDLES_FIXTURE) {
@@ -212,48 +239,75 @@ fn rust_candles_match_c_for_multiple_configs() {
 }
 
 #[test]
-fn rust_detects_shooting_star_in_targeted_case() {
-    let oracle = ensure_candle_oracle();
-    let config = CandleConfig {
-        period: 3,
-        ..CandleConfig::default()
-    };
-    let inputs = [
-        vec![10.0, 8.0, 8.0, 12.0],
-        vec![12.5, 10.5, 10.5, 14.2],
-        vec![9.5, 7.5, 7.5, 12.0],
-        vec![12.0, 10.0, 10.0, 12.1],
-    ];
-    let slices = inputs.each_ref().map(Vec::as_slice);
-    let full = run_candles(TC_ALL, &slices, &config).expect("shooting star case should run");
-    let single = run_candle_pattern(TC_SHOOTING_STAR, &slices, &config)
-        .expect("single shooting star path should run");
-    let c_sets: Vec<CandleSet> = run_c_oracle(&oracle, TC_ALL, &config, &inputs)
-        .into_iter()
-        .map(|set| set & TC_SHOOTING_STAR)
-        .collect();
+fn targeted_candle_cases_cover_fixture_positive_gaps() {
+    let fixture_cases = parse_candle_cases(CANDLES_FIXTURE);
+    let mut missing_patterns = Vec::new();
 
+    for info in all_candles() {
+        let has_positive = fixture_cases.iter().any(|case| {
+            case.expectations
+                .iter()
+                .any(|expectation| expectation.pattern == info.pattern && !expectation.negate)
+        });
+        if !has_positive {
+            missing_patterns.push((info.name, info.pattern));
+        }
+    }
+
+    let covered_patterns: Vec<(&str, CandleSet)> = targeted_candle_cases()
+        .iter()
+        .map(|case| (case.name, case.pattern))
+        .collect();
     assert_eq!(
-        full.at(3) & TC_SHOOTING_STAR,
-        TC_SHOOTING_STAR,
-        "targeted case should produce a shooting star hit"
+        missing_patterns, covered_patterns,
+        "targeted candle cases should exactly cover the positive-pattern gaps left by candles.txt"
     );
-    assert_eq!(
-        (0..inputs[0].len())
-            .map(|index| single.at(index))
-            .collect::<Vec<_>>(),
-        (0..inputs[0].len())
-            .map(|index| full.at(index) & TC_SHOOTING_STAR)
-            .collect::<Vec<_>>(),
-        "single-pattern shooting star path should match the full-engine projection"
-    );
-    assert_eq!(
-        (0..inputs[0].len())
-            .map(|index| full.at(index) & TC_SHOOTING_STAR)
-            .collect::<Vec<_>>(),
-        c_sets,
-        "targeted shooting star case should stay aligned with the stable C full-engine path"
-    );
+}
+
+#[test]
+fn rust_targeted_candle_cases_match_c_and_full_engine() {
+    let oracle = ensure_candle_oracle();
+
+    for case in targeted_candle_cases() {
+        let slices = case.inputs.each_ref().map(Vec::as_slice);
+        let full = run_candles(TC_ALL, &slices, &case.config)
+            .unwrap_or_else(|_| panic!("targeted {} case should run", case.name));
+        let single = run_candle_pattern(case.pattern, &slices, &case.config)
+            .unwrap_or_else(|_| panic!("single targeted {} path should run", case.name));
+        let c_sets: Vec<CandleSet> = run_c_oracle(&oracle, TC_ALL, &case.config, &case.inputs)
+            .into_iter()
+            .map(|set| set & case.pattern)
+            .collect();
+
+        for &index in case.hit_indices {
+            assert_eq!(
+                full.at(index) & case.pattern,
+                case.pattern,
+                "targeted {} case should produce a hit at {}",
+                case.name,
+                index
+            );
+        }
+
+        assert_eq!(
+            (0..case.inputs[0].len())
+                .map(|index| single.at(index))
+                .collect::<Vec<_>>(),
+            (0..case.inputs[0].len())
+                .map(|index| full.at(index) & case.pattern)
+                .collect::<Vec<_>>(),
+            "single-pattern {} path should match the full-engine projection",
+            case.name
+        );
+        assert_eq!(
+            (0..case.inputs[0].len())
+                .map(|index| full.at(index) & case.pattern)
+                .collect::<Vec<_>>(),
+            c_sets,
+            "targeted {} case should stay aligned with the stable C full-engine path",
+            case.name
+        );
+    }
 }
 
 fn ensure_candle_oracle() -> PathBuf {
