@@ -182,7 +182,7 @@ pub fn run_named_kernel_probes(
     let mut results = Vec::new();
 
     for &size in &config.sizes {
-        for name in ["ema", "wilders", "zlema", "macd"] {
+        for name in ["ema", "wilders", "zlema", "macd", "rsi"] {
             if !requested.contains(name) {
                 continue;
             }
@@ -195,6 +195,7 @@ pub fn run_named_kernel_probes(
                 "wilders" => run_wilders_kernel_probe(&scenario, config)?,
                 "zlema" => run_zlema_kernel_probe(&scenario, config)?,
                 "macd" => run_macd_kernel_probe(&scenario, config)?,
+                "rsi" => run_rsi_kernel_probe(&scenario, config)?,
                 _ => continue,
             };
             results.push(result);
@@ -706,6 +707,43 @@ fn run_macd_kernel_probe(
     ))
 }
 
+fn run_rsi_kernel_probe(
+    scenario: &BenchmarkScenario<'_>,
+    config: &BenchmarkConfig,
+) -> Result<KernelProbeResult, IndicatorError> {
+    let input = &scenario.inputs[0];
+    let period = scenario.options[0] as usize;
+    let output_len = input.len().saturating_sub(period);
+    let mut output = vec![0.0; output_len];
+    run_rsi_kernel(input, period, &mut output);
+
+    let calibration = calibrate_iterations(config, |runs| {
+        for _ in 0..runs {
+            let produced = run_rsi_kernel(input, period, &mut output);
+            black_box((produced, output[produced.saturating_sub(1)]));
+        }
+        Ok(())
+    })?;
+    let iterations = calibration.iterations;
+    let mut samples = Vec::with_capacity(config.repeats);
+    for _ in 0..config.repeats {
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let produced = run_rsi_kernel(input, period, &mut output);
+            black_box((produced, output[produced.saturating_sub(1)]));
+        }
+        samples.push(start.elapsed());
+    }
+
+    Ok(finish_kernel_probe(
+        "rsi",
+        input.len(),
+        calibration,
+        iterations,
+        samples,
+    ))
+}
+
 fn collect_stream_outputs(
     stream: &mut dyn crate::core::indicator::IndicatorStream,
     inputs: &[Vec<Real>],
@@ -912,6 +950,52 @@ fn run_macd_kernel(
     }
 
     out_index
+}
+
+fn run_rsi_kernel(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() <= period {
+        return 0;
+    }
+
+    let per = 1.0 / period as Real;
+    let mut smooth_up = 0.0;
+    let mut smooth_down = 0.0;
+
+    for index in 1..=period {
+        let delta = input[index] - input[index - 1];
+        if delta > 0.0 {
+            smooth_up += delta;
+        } else {
+            smooth_down += -delta;
+        }
+    }
+
+    smooth_up /= period as Real;
+    smooth_down /= period as Real;
+    output[0] = run_rsi_value(smooth_up, smooth_down);
+
+    let mut out_index = 1usize;
+    for index in (period + 1)..input.len() {
+        let delta = input[index] - input[index - 1];
+        let upward = delta.max(0.0);
+        let downward = (-delta).max(0.0);
+
+        smooth_up = (upward - smooth_up) * per + smooth_up;
+        smooth_down = (downward - smooth_down) * per + smooth_down;
+        output[out_index] = run_rsi_value(smooth_up, smooth_down);
+        out_index += 1;
+    }
+
+    out_index
+}
+
+fn run_rsi_value(smooth_up: Real, smooth_down: Real) -> Real {
+    let total = smooth_up + smooth_down;
+    if total == 0.0 {
+        0.0
+    } else {
+        100.0 * (smooth_up / total)
+    }
 }
 
 fn build_options(option_names: &[&str], input_len: usize) -> Vec<Real> {
