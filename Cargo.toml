@@ -15,3 +15,7 @@ path = "rust/src/bin/indicator-bench.rs"
 [[test]]
 name = "golden_indicators"
 path = "rust/tests/golden_indicators.rs"
+
+[[test]]
+name = "beta_parity"
+path = "rust/tests/beta_parity.rs"

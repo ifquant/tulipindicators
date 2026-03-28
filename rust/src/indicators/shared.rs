@@ -23,6 +23,10 @@ impl EmaState {
         self.value = Some(next);
         next
     }
+
+    pub fn value(&self) -> Real {
+        self.value.expect("ema state should be initialized")
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

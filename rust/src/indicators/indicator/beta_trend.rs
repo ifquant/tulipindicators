@@ -252,14 +252,21 @@ impl IndicatorStream for KstStream {
                 self.prices.pop_front();
             }
 
-            if self.prices.len() >= self.periods[3] + 1 {
-                let current = *self.prices.back().expect("current price should exist");
-                let mut value = 0.0;
+            if let Some(&current) = self.prices.back() {
                 for index in 0..4 {
                     let period = self.periods[index];
-                    let base = self.prices[self.prices.len() - 1 - period];
-                    let roc = (current - base) / base;
-                    value += self.emas[index].feed(roc) * (index as Real + 1.0);
+                    if self.prices.len() > period {
+                        let base = self.prices[self.prices.len() - 1 - period];
+                        let roc = (current - base) / base;
+                        self.emas[index].feed(roc);
+                    }
+                }
+            }
+
+            if self.prices.len() >= self.periods[3] + 1 {
+                let mut value = 0.0;
+                for index in 0..4 {
+                    value += self.emas[index].value() * (index as Real + 1.0);
                 }
                 value /= 10.0;
 
