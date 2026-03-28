@@ -1,0 +1,10 @@
+[package]
+name = "tulipindicators"
+version = "0.1.0"
+edition = "2021"
+license = "LGPL-3.0-or-later"
+description = "Rust-style technical indicator core for incremental migration from Tulip Indicators C."
+
+[lib]
+path = "src/lib.rs"
+

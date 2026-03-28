@@ -32,6 +32,7 @@
 - Type check：无独立 type check 配置
 - 单元测试：`make smoke`
 - 集成测试：`make smoke_amal`
+- Rust benchmark：`cargo run --release --bin indicator-bench`
 - 构建：`make`
 - 仅运行某个模块/包：无包级任务系统；按目标运行 `make sample`、`make example1`、`make example2`、`make cli`、`make benchmark`、`make fuzzer`
 - 清理构建产物：`make clean`
@@ -79,6 +80,7 @@
 ## 测试与验收
 - 改动代码后，至少运行：`make smoke`
 - 改动单文件构建、生成脚本或公共头文件后，优先再运行：`make smoke_amal`
+- 改动 Rust 指标实现、流式路径或性能敏感逻辑时，优先再运行：`cargo run --release --bin indicator-bench`
 - 修复 bug 时，优先补一个能复现该 bug 的测试，或把现有 `tests/*.txt` 样例扩充到能覆盖该场景。
 - 改动公开接口、示例程序或生成逻辑时，更新相关文档与说明。
 - 每次提交前，确认已新增一篇对应的 `tutorials/commit/NNNN-*.md` 教程；如果没有这篇教程，提交不算完整。

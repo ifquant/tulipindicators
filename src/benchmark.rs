@@ -1,0 +1,372 @@
+use crate::core::error::IndicatorError;
+use crate::core::indicator::Indicator;
+use crate::core::types::Real;
+use crate::registry;
+use std::fmt::Write as _;
+use std::fs;
+use std::hint::black_box;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+const DEFAULT_SIZES: &[usize] = &[256, 4096, 65_536];
+const DEFAULT_STREAM_CHUNK: usize = 64;
+const DEFAULT_MIN_ITERATIONS: usize = 8;
+const DEFAULT_TARGET_MS: u64 = 200;
+
+#[derive(Debug, Clone)]
+pub struct BenchmarkConfig {
+    pub sizes: Vec<usize>,
+    pub stream_chunk_size: usize,
+    pub min_iterations: usize,
+    pub target_duration: Duration,
+    pub output_dir: PathBuf,
+}
+
+impl Default for BenchmarkConfig {
+    fn default() -> Self {
+        Self {
+            sizes: DEFAULT_SIZES.to_vec(),
+            stream_chunk_size: DEFAULT_STREAM_CHUNK,
+            min_iterations: DEFAULT_MIN_ITERATIONS,
+            target_duration: Duration::from_millis(DEFAULT_TARGET_MS),
+            output_dir: PathBuf::from("target/indicator-bench"),
+        }
+    }
+}
+
+impl BenchmarkConfig {
+    pub fn from_env() -> Self {
+        let mut config = Self::default();
+
+        if let Ok(raw) = std::env::var("TI_BENCH_SIZES") {
+            let sizes = parse_csv_usize(&raw);
+            if !sizes.is_empty() {
+                config.sizes = sizes;
+            }
+        }
+
+        if let Ok(raw) = std::env::var("TI_BENCH_STREAM_CHUNK") {
+            if let Ok(value) = raw.parse::<usize>() {
+                if value > 0 {
+                    config.stream_chunk_size = value;
+                }
+            }
+        }
+
+        if let Ok(raw) = std::env::var("TI_BENCH_MIN_ITERATIONS") {
+            if let Ok(value) = raw.parse::<usize>() {
+                if value > 0 {
+                    config.min_iterations = value;
+                }
+            }
+        }
+
+        if let Ok(raw) = std::env::var("TI_BENCH_TARGET_MS") {
+            if let Ok(value) = raw.parse::<u64>() {
+                if value > 0 {
+                    config.target_duration = Duration::from_millis(value);
+                }
+            }
+        }
+
+        config
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BenchmarkMode {
+    Batch,
+    Stream,
+}
+
+impl BenchmarkMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Batch => "batch",
+            Self::Stream => "stream",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BenchmarkResult {
+    pub indicator: &'static str,
+    pub mode: BenchmarkMode,
+    pub input_len: usize,
+    pub iterations: usize,
+    pub total_outputs: usize,
+    pub elapsed: Duration,
+    pub ns_per_input: f64,
+}
+
+pub fn run_registry_benchmarks(
+    config: &BenchmarkConfig,
+) -> Result<Vec<BenchmarkResult>, IndicatorError> {
+    let mut results = Vec::new();
+
+    for indicator in registry::all() {
+        for &size in &config.sizes {
+            let scenario = BenchmarkScenario::new(indicator, size)?;
+            results.push(run_batch_benchmark(&scenario, config)?);
+
+            if indicator.create_stream(&scenario.options)?.is_some() {
+                results.push(run_stream_benchmark(&scenario, config)?);
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+pub fn write_report(
+    config: &BenchmarkConfig,
+    results: &[BenchmarkResult],
+) -> std::io::Result<(PathBuf, PathBuf)> {
+    fs::create_dir_all(&config.output_dir)?;
+
+    let markdown_path = config.output_dir.join("latest.md");
+    let tsv_path = config.output_dir.join("latest.tsv");
+
+    fs::write(&markdown_path, render_markdown(results))?;
+    fs::write(&tsv_path, render_tsv(results))?;
+
+    Ok((markdown_path, tsv_path))
+}
+
+pub fn render_markdown(results: &[BenchmarkResult]) -> String {
+    let mut out = String::new();
+    out.push_str("# Indicator Benchmarks\n\n");
+    out.push_str("| indicator | mode | input_len | iterations | outputs | total_ms | ns/input |\n");
+    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: |\n");
+
+    for result in results {
+        let _ = writeln!(
+            out,
+            "| {} | {} | {} | {} | {} | {:.3} | {:.2} |",
+            result.indicator,
+            result.mode.as_str(),
+            result.input_len,
+            result.iterations,
+            result.total_outputs,
+            result.elapsed.as_secs_f64() * 1000.0,
+            result.ns_per_input,
+        );
+    }
+
+    out
+}
+
+pub fn render_tsv(results: &[BenchmarkResult]) -> String {
+    let mut out =
+        String::from("indicator\tmode\tinput_len\titerations\toutputs\ttotal_ms\tns_per_input\n");
+
+    for result in results {
+        let _ = writeln!(
+            out,
+            "{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}",
+            result.indicator,
+            result.mode.as_str(),
+            result.input_len,
+            result.iterations,
+            result.total_outputs,
+            result.elapsed.as_secs_f64() * 1000.0,
+            result.ns_per_input,
+        );
+    }
+
+    out
+}
+
+struct BenchmarkScenario<'a> {
+    indicator: &'a dyn Indicator,
+    options: Vec<Real>,
+    inputs: Vec<Vec<Real>>,
+}
+
+impl<'a> BenchmarkScenario<'a> {
+    fn new(indicator: &'a dyn Indicator, input_len: usize) -> Result<Self, IndicatorError> {
+        let metadata = indicator.metadata();
+        let options = build_options(metadata.option_names, input_len);
+        let inputs = build_inputs(metadata.input_names, input_len);
+
+        Ok(Self {
+            indicator,
+            options,
+            inputs,
+        })
+    }
+}
+
+fn run_batch_benchmark(
+    scenario: &BenchmarkScenario<'_>,
+    config: &BenchmarkConfig,
+) -> Result<BenchmarkResult, IndicatorError> {
+    let inputs: Vec<&[Real]> = scenario.inputs.iter().map(Vec::as_slice).collect();
+    let sample_outputs = scenario.indicator.run(&inputs, &scenario.options)?;
+    let total_outputs = sample_outputs.iter().map(Vec::len).sum();
+    let iterations = choose_iterations(scenario.inputs[0].len(), config);
+
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let outputs = scenario.indicator.run(&inputs, &scenario.options)?;
+        black_box(outputs.iter().map(Vec::len).sum::<usize>());
+    }
+    let elapsed = start.elapsed();
+
+    Ok(BenchmarkResult {
+        indicator: scenario.indicator.metadata().name,
+        mode: BenchmarkMode::Batch,
+        input_len: scenario.inputs[0].len(),
+        iterations,
+        total_outputs,
+        elapsed,
+        ns_per_input: elapsed.as_secs_f64() * 1_000_000_000.0
+            / (scenario.inputs[0].len() * iterations) as f64,
+    })
+}
+
+fn run_stream_benchmark(
+    scenario: &BenchmarkScenario<'_>,
+    config: &BenchmarkConfig,
+) -> Result<BenchmarkResult, IndicatorError> {
+    let mut sample_stream = scenario
+        .indicator
+        .create_stream(&scenario.options)?
+        .expect("stream benchmark requested for indicator without stream");
+    let total_outputs = collect_stream_outputs(
+        sample_stream.as_mut(),
+        &scenario.inputs,
+        config.stream_chunk_size,
+    )?;
+    let iterations = choose_iterations(scenario.inputs[0].len(), config);
+
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let mut stream = scenario
+            .indicator
+            .create_stream(&scenario.options)?
+            .expect("stream benchmark requested for indicator without stream");
+        let outputs =
+            collect_stream_outputs(stream.as_mut(), &scenario.inputs, config.stream_chunk_size)?;
+        black_box(outputs);
+    }
+    let elapsed = start.elapsed();
+
+    Ok(BenchmarkResult {
+        indicator: scenario.indicator.metadata().name,
+        mode: BenchmarkMode::Stream,
+        input_len: scenario.inputs[0].len(),
+        iterations,
+        total_outputs,
+        elapsed,
+        ns_per_input: elapsed.as_secs_f64() * 1_000_000_000.0
+            / (scenario.inputs[0].len() * iterations) as f64,
+    })
+}
+
+fn collect_stream_outputs(
+    stream: &mut dyn crate::core::indicator::IndicatorStream,
+    inputs: &[Vec<Real>],
+    chunk_size: usize,
+) -> Result<usize, IndicatorError> {
+    let mut total_outputs = 0;
+    let mut start = 0;
+    let input_len = inputs.first().map_or(0, Vec::len);
+
+    while start < input_len {
+        let end = (start + chunk_size).min(input_len);
+        let chunk_inputs: Vec<&[Real]> = inputs.iter().map(|series| &series[start..end]).collect();
+        let chunk_outputs = stream.feed(&chunk_inputs)?;
+        total_outputs += chunk_outputs.iter().map(Vec::len).sum::<usize>();
+        start = end;
+    }
+
+    Ok(total_outputs)
+}
+
+fn choose_iterations(input_len: usize, config: &BenchmarkConfig) -> usize {
+    let target_work = 1_000_000usize;
+    let iterations = target_work / input_len.max(1);
+    iterations.max(config.min_iterations)
+}
+
+fn build_options(option_names: &[&str], input_len: usize) -> Vec<Real> {
+    option_names
+        .iter()
+        .map(|name| match *name {
+            "period" => default_period(input_len),
+            "short_period" => 5.0,
+            "long_period" => 10.0,
+            "signal_period" => 9.0,
+            "stddev" => 2.0,
+            "acceleration_factor_step" => 0.02,
+            "acceleration_factor_maximum" => 0.2,
+            "alpha" => 0.2,
+            other if other.contains("period") => 7.0,
+            _ => 2.0,
+        })
+        .collect()
+}
+
+fn build_inputs(input_names: &[&str], input_len: usize) -> Vec<Vec<Real>> {
+    let close = build_close_series(input_len);
+    let volume = build_volume_series(input_len);
+
+    input_names
+        .iter()
+        .map(|name| match *name {
+            "real" | "close" => close.clone(),
+            "open" => close
+                .iter()
+                .enumerate()
+                .map(|(index, close_value)| close_value - ((index % 3) as Real - 1.0) * 0.13)
+                .collect(),
+            "high" => close
+                .iter()
+                .enumerate()
+                .map(|(index, close_value)| close_value + 0.35 + ((index % 5) as Real * 0.03))
+                .collect(),
+            "low" => close
+                .iter()
+                .enumerate()
+                .map(|(index, close_value)| close_value - 0.35 - ((index % 5) as Real * 0.03))
+                .collect(),
+            "volume" => volume.clone(),
+            _ => close.clone(),
+        })
+        .collect()
+}
+
+fn build_close_series(input_len: usize) -> Vec<Real> {
+    (0..input_len)
+        .map(|index| {
+            let trend = 100.0 + index as Real * 0.015;
+            let wave = ((index as Real) / 17.0).sin() * 1.7;
+            let ripple = ((index as Real) / 7.0).cos() * 0.6;
+            trend + wave + ripple
+        })
+        .collect()
+}
+
+fn build_volume_series(input_len: usize) -> Vec<Real> {
+    (0..input_len)
+        .map(|index| 10_000.0 + (index % 250) as Real * 37.0 + ((index % 13) as Real * 11.0))
+        .collect()
+}
+
+fn default_period(input_len: usize) -> Real {
+    let candidate = (input_len / 32).clamp(5, 30);
+    candidate as Real
+}
+
+fn parse_csv_usize(raw: &str) -> Vec<usize> {
+    raw.split(',')
+        .filter_map(|item| item.trim().parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .collect()
+}
+
+#[allow(dead_code)]
+fn _exists(path: &Path) -> bool {
+    path.exists()
+}
