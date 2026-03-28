@@ -151,12 +151,14 @@ fn run_dema_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
     let mut out_index = 0usize;
 
     for (index, sample) in input.iter().enumerate() {
-        ema = ema * per1 + sample * per;
+        let sample_part = *sample * per;
+        ema = ema.mul_add(per1, sample_part);
         if index == period - 1 {
             ema2 = ema;
         }
         if index >= period - 1 {
-            ema2 = ema2 * per1 + ema * per;
+            let ema_part = ema * per;
+            ema2 = ema2.mul_add(per1, ema_part);
             if index >= lookback {
                 output[out_index] = ema * 2.0 - ema2;
                 out_index += 1;
