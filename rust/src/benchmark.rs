@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const DEFAULT_SIZES: &[usize] = &[256, 4096, 65_536, 262_144];
-const DEFAULT_STREAM_CHUNK: usize = 64;
+const DEFAULT_STREAM_CHUNK: usize = 1024;
 const DEFAULT_MIN_ITERATIONS: usize = 16;
 const DEFAULT_TARGET_MS: u64 = 1_000;
 const DEFAULT_REPEATS: usize = 3;
@@ -350,11 +350,14 @@ fn collect_stream_outputs(
     let input_len = inputs.first().map_or(0, Vec::len);
     let output_count = stream.metadata().output_names.len();
     let mut output_buffers = vec![vec![0.0; chunk_size]; output_count];
-
+    let mut chunk_inputs = Vec::with_capacity(inputs.len());
     while start < input_len {
         let end = (start + chunk_size).min(input_len);
-        let chunk_inputs: Vec<&[Real]> = inputs.iter().map(|series| &series[start..end]).collect();
         let current_chunk_len = end - start;
+        chunk_inputs.clear();
+        for series in inputs {
+            chunk_inputs.push(&series[start..end]);
+        }
         let mut outputs: Vec<&mut [Real]> = output_buffers
             .iter_mut()
             .map(|buffer| &mut buffer[..current_chunk_len])

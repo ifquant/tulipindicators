@@ -75,9 +75,10 @@ impl Indicator for Atr {
 struct AtrStream {
     period: usize,
     progress: usize,
+    state_progress: isize,
     sum: Real,
-    last: Option<Real>,
-    last_close: Option<Real>,
+    last: Real,
+    last_close: Real,
 }
 
 impl AtrStream {
@@ -85,9 +86,10 @@ impl AtrStream {
         Ok(Self {
             period: parse_period(options)?,
             progress: 0,
+            state_progress: -(parse_period(options)? as isize - 1),
             sum: 0.0,
-            last: None,
-            last_close: None,
+            last: 0.0,
+            last_close: 0.0,
         })
     }
 }
@@ -102,31 +104,11 @@ impl IndicatorStream for AtrStream {
     }
 
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let (high, low, close) = triple_input(METADATA.name, inputs)?;
-        let mut output = Vec::with_capacity(high.len());
-
-        for index in 0..high.len() {
-            let tr = match self.last_close {
-                Some(previous_close) => true_range(high[index], low[index], previous_close),
-                None => high[index] - low[index],
-            };
-
-            if self.progress < self.period {
-                self.sum += tr;
-                if self.progress + 1 == self.period {
-                    let value = self.sum / self.period as Real;
-                    self.last = Some(value);
-                    output.push(value);
-                }
-            } else if let Some(last) = self.last {
-                let value = (tr - last) / self.period as Real + last;
-                self.last = Some(value);
-                output.push(value);
-            }
-
-            self.last_close = Some(close[index]);
-            self.progress += 1;
-        }
+        let (high, _, _) = triple_input(METADATA.name, inputs)?;
+        let mut output = vec![0.0; high.len()];
+        let mut outputs = [&mut output[..]];
+        let produced = self.feed_in_place(inputs, &mut outputs)?;
+        output.truncate(produced);
 
         Ok(vec![output])
     }
@@ -142,36 +124,55 @@ impl IndicatorStream for AtrStream {
 
         let period = self.period;
         let per = 1.0 / period as Real;
+        let start = -(period as isize - 1);
+        let mut progress = self.state_progress;
         let mut sum = self.sum;
         let mut last = self.last;
         let mut last_close = self.last_close;
         let mut out_index = 0usize;
+        let mut index = 0usize;
+        let mut processed = 0usize;
 
-        for index in 0..high.len() {
-            let tr = match last_close {
-                Some(previous_close) => true_range(high[index], low[index], previous_close),
-                None => high[index] - low[index],
-            };
-
-            if self.progress < period {
-                sum += tr;
-                if self.progress + 1 == period {
-                    let value = sum * per;
-                    last = Some(value);
-                    outputs[0][out_index] = value;
-                    out_index += 1;
-                }
-            } else if let Some(current) = last {
-                let value = (tr - current) * per + current;
-                last = Some(value);
-                outputs[0][out_index] = value;
-                out_index += 1;
+        if progress < 1 {
+            if progress == start && index < high.len() {
+                sum = high[0] - low[0];
+                last_close = close[0];
+                progress += 1;
+                index += 1;
+                processed += 1;
             }
 
-            last_close = Some(close[index]);
-            self.progress += 1;
+            while progress <= 0 && index < high.len() {
+                let tr = true_range(high[index], low[index], last_close);
+                sum += tr;
+                last_close = close[index];
+                progress += 1;
+                index += 1;
+                processed += 1;
+            }
+
+            if progress == 1 {
+                last = sum * per;
+                outputs[0][out_index] = last;
+                out_index += 1;
+            }
         }
 
+        if progress >= 1 {
+            while index < high.len() {
+                let tr = true_range(high[index], low[index], last_close);
+                last = (tr - last) * per + last;
+                outputs[0][out_index] = last;
+                out_index += 1;
+                last_close = close[index];
+                progress += 1;
+                index += 1;
+                processed += 1;
+            }
+        }
+
+        self.progress += processed;
+        self.state_progress = progress;
         self.sum = sum;
         self.last = last;
         self.last_close = last_close;

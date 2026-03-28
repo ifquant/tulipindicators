@@ -6,7 +6,7 @@
 #include <string.h>
 #include <sys/time.h>
 
-#define DEFAULT_STREAM_CHUNK 64
+#define DEFAULT_STREAM_CHUNK 1024
 #define DEFAULT_MIN_ITERATIONS 16
 #define DEFAULT_TARGET_MS 1000
 #define DEFAULT_REPEATS 3
