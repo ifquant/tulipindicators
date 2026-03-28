@@ -4,7 +4,6 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
-use crate::indicators::shared::WildersAverageState;
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "wilders",
@@ -66,15 +65,39 @@ impl Indicator for Wilders {
 
 struct WildersStream {
     progress: usize,
-    smoother: WildersAverageState,
+    period: usize,
+    warmup_sum: Real,
+    value: Option<Real>,
 }
 
 impl WildersStream {
     fn new(options: &[Real]) -> Result<Self, IndicatorError> {
+        let period = parse_period(options)?;
         Ok(Self {
             progress: 0,
-            smoother: WildersAverageState::new(parse_period(options)?),
+            period,
+            warmup_sum: 0.0,
+            value: None,
         })
+    }
+
+    fn feed_sample(&mut self, sample: Real) -> Option<Real> {
+        if self.progress < self.period {
+            self.warmup_sum += sample;
+            self.progress += 1;
+            if self.progress == self.period {
+                let value = self.warmup_sum / self.period as Real;
+                self.value = Some(value);
+                return Some(value);
+            }
+            return None;
+        }
+
+        let current = self.value.expect("wilders stream should be initialized");
+        let next = (sample - current) / self.period as Real + current;
+        self.value = Some(next);
+        self.progress += 1;
+        Some(next)
     }
 }
 
@@ -91,11 +114,10 @@ impl IndicatorStream for WildersStream {
         let input = single_input(METADATA.name, inputs)?;
         let mut output = Vec::with_capacity(input.len());
 
-        for sample in input {
-            if let Some(value) = self.smoother.feed(*sample) {
+        for &sample in input {
+            if let Some(value) = self.feed_sample(sample) {
                 output.push(value);
             }
-            self.progress += 1;
         }
 
         Ok(vec![output])
@@ -112,11 +134,10 @@ impl IndicatorStream for WildersStream {
 
         let mut out_index = 0usize;
         for &sample in input {
-            if let Some(value) = self.smoother.feed(sample) {
+            if let Some(value) = self.feed_sample(sample) {
                 outputs[0][out_index] = value;
                 out_index += 1;
             }
-            self.progress += 1;
         }
 
         Ok(out_index)
@@ -135,15 +156,25 @@ fn run_wilders_batch(input: &[Real], period: usize, output: &mut [Real]) -> usiz
 
     let per = 1.0 / period as Real;
     let mut sum = 0.0;
-    for &sample in &input[..period] {
-        sum += sample;
-    }
+    unsafe {
+        let mut input_ptr = input.as_ptr();
+        for _ in 0..period {
+            sum += *input_ptr;
+            input_ptr = input_ptr.add(1);
+        }
 
-    let mut value = sum / period as Real;
-    output[0] = value;
-    for (dst, &sample) in output[1..].iter_mut().zip(&input[period..]) {
-        value = (sample - value) * per + value;
-        *dst = value;
+        let mut value = sum / period as Real;
+        let mut out_ptr = output.as_mut_ptr();
+        *out_ptr = value;
+        out_ptr = out_ptr.add(1);
+
+        for _ in period..input.len() {
+            let sample = *input_ptr;
+            value = (sample - value) * per + value;
+            *out_ptr = value;
+            input_ptr = input_ptr.add(1);
+            out_ptr = out_ptr.add(1);
+        }
     }
 
     output.len()
