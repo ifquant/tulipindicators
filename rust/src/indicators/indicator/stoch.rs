@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue, RingSum};
@@ -30,70 +32,42 @@ impl Indicator for Stoch {
         let (high, low, close) = triple_input(METADATA.name, inputs)?;
         let (k_period, k_slow, d_period) = parse_options(options)?;
         let lookback = k_period + k_slow + d_period - 3;
-        let mut stoch = Vec::with_capacity(high.len().saturating_sub(lookback));
-        let mut stoch_ma = Vec::with_capacity(high.len().saturating_sub(lookback));
+        let output_len = high.len().saturating_sub(lookback);
+        let mut stoch = vec![0.0; output_len];
+        let mut stoch_ma = vec![0.0; output_len];
 
-        if high.len() <= lookback {
-            return Ok(vec![stoch, stoch_ma]);
-        }
-
-        let kper = 1.0 / k_slow as Real;
-        let dper = 1.0 / d_period as Real;
-
-        let mut trail = 0usize;
-        let mut maxi = 0usize;
-        let mut mini = 0usize;
-        let mut max = high[0];
-        let mut min = low[0];
-
-        let mut k_sum = RingSum::new(k_slow);
-        let mut d_sum = RingSum::new(d_period);
-
-        for index in 0..high.len() {
-            if index >= k_period {
-                trail += 1;
-            }
-
-            let high_bar = high[index];
-            if maxi < trail {
-                let (next_index, next_value) = scan_max(high, trail, index);
-                maxi = next_index;
-                max = next_value;
-            } else if high_bar >= max {
-                maxi = index;
-                max = high_bar;
-            }
-
-            let low_bar = low[index];
-            if mini < trail {
-                let (next_index, next_value) = scan_min(low, trail, index);
-                mini = next_index;
-                min = next_value;
-            } else if low_bar <= min {
-                mini = index;
-                min = low_bar;
-            }
-
-            let kdiff = max - min;
-            let kfast = if kdiff == 0.0 {
-                0.0
-            } else {
-                100.0 * ((close[index] - min) / kdiff)
-            };
-            k_sum.push(kfast);
-
-            if index >= k_period - 1 + k_slow - 1 {
-                let k_value = k_sum.sum * kper;
-                d_sum.push(k_value);
-
-                if index >= lookback {
-                    stoch.push(k_value);
-                    stoch_ma.push(d_sum.sum * dper);
-                }
-            }
-        }
+        let produced = run_stoch_batch(
+            high,
+            low,
+            close,
+            (k_period, k_slow, d_period),
+            (&mut stoch, &mut stoch_ma),
+        );
+        debug_assert_eq!(produced, output_len);
 
         Ok(vec![stoch, stoch_ma])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low, close) = triple_input(METADATA.name, inputs)?;
+        let (k_period, k_slow, d_period) = parse_options(options)?;
+        let output_len = high.len().saturating_sub(k_period + k_slow + d_period - 3);
+        validate_output_slices(&METADATA, outputs, 2)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        ensure_output_len(&METADATA, outputs[1].len(), output_len, 1)?;
+        let (first, second) = outputs.split_at_mut(1);
+        Ok(run_stoch_batch(
+            high,
+            low,
+            close,
+            (k_period, k_slow, d_period),
+            (&mut first[0][..output_len], &mut second[0][..output_len]),
+        ))
     }
 
     fn create_stream(
@@ -102,6 +76,81 @@ impl Indicator for Stoch {
     ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
         Ok(Some(Box::new(StochStream::new(options)?)))
     }
+}
+
+fn run_stoch_batch(
+    high: &[Real],
+    low: &[Real],
+    close: &[Real],
+    periods: (usize, usize, usize),
+    outputs: (&mut [Real], &mut [Real]),
+) -> usize {
+    let (k_period, k_slow, d_period) = periods;
+    let (stoch, stoch_ma) = outputs;
+    let lookback = k_period + k_slow + d_period - 3;
+    if high.len() <= lookback {
+        return 0;
+    }
+
+    let kper = 1.0 / k_slow as Real;
+    let dper = 1.0 / d_period as Real;
+
+    let mut trail = 0usize;
+    let mut maxi = 0usize;
+    let mut mini = 0usize;
+    let mut max = high[0];
+    let mut min = low[0];
+
+    let mut k_sum = RingSum::new(k_slow);
+    let mut d_sum = RingSum::new(d_period);
+    let mut out_index = 0usize;
+
+    for index in 0..high.len() {
+        if index >= k_period {
+            trail += 1;
+        }
+
+        let high_bar = high[index];
+        if maxi < trail {
+            let (next_index, next_value) = scan_max(high, trail, index);
+            maxi = next_index;
+            max = next_value;
+        } else if high_bar >= max {
+            maxi = index;
+            max = high_bar;
+        }
+
+        let low_bar = low[index];
+        if mini < trail {
+            let (next_index, next_value) = scan_min(low, trail, index);
+            mini = next_index;
+            min = next_value;
+        } else if low_bar <= min {
+            mini = index;
+            min = low_bar;
+        }
+
+        let kdiff = max - min;
+        let kfast = if kdiff == 0.0 {
+            0.0
+        } else {
+            100.0 * ((close[index] - min) / kdiff)
+        };
+        k_sum.push(kfast);
+
+        if index >= k_period - 1 + k_slow - 1 {
+            let k_value = k_sum.sum * kper;
+            d_sum.push(k_value);
+
+            if index >= lookback {
+                stoch[out_index] = k_value;
+                stoch_ma[out_index] = d_sum.sum * dper;
+                out_index += 1;
+            }
+        }
+    }
+
+    out_index
 }
 
 struct StochStream {
