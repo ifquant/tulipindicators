@@ -17,7 +17,7 @@ impl EmaState {
 
     pub fn feed(&mut self, sample: Real) -> Real {
         let next = match self.value {
-            Some(current) => (sample - current) * self.multiplier + current,
+            Some(current) => (sample - current).mul_add(self.multiplier, current),
             None => sample,
         };
         self.value = Some(next);

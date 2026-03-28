@@ -161,7 +161,7 @@ impl IndicatorStream for AtrStream {
         if progress >= 1 {
             while index < high.len() {
                 let tr = true_range(high[index], low[index], last_close);
-                last = (tr - last) * per + last;
+                last = (tr - last).mul_add(per, last);
                 outputs[0][out_index] = last;
                 out_index += 1;
                 last_close = close[index];
@@ -221,7 +221,7 @@ fn run_atr_batch(
 
     for index in period..high.len() {
         let tr = true_range(high[index], low[index], close[index - 1]);
-        value = (tr - value) * per + value;
+        value = (tr - value).mul_add(per, value);
         output[out_index] = value;
         out_index += 1;
     }
