@@ -104,6 +104,7 @@ fn default_options(indicator: &str) -> Vec<Real> {
     match indicator {
         "bbands" => vec![5.0, 2.0],
         "macd" => vec![12.0, 26.0, 9.0],
+        "vidya" => vec![2.0, 5.0, 0.2],
         _ => vec![5.0],
     }
 }

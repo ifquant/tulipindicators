@@ -349,6 +349,108 @@ impl RingSum {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RollingStats {
+    pub variance: Real,
+}
+
+#[derive(Debug, Clone)]
+pub struct RollingStatsState {
+    period: usize,
+    values: Vec<Real>,
+    index: usize,
+    len: usize,
+    sum: Real,
+    sum2: Real,
+}
+
+impl RollingStatsState {
+    pub fn new(period: usize) -> Self {
+        Self {
+            period,
+            values: vec![0.0; period],
+            index: 0,
+            len: 0,
+            sum: 0.0,
+            sum2: 0.0,
+        }
+    }
+
+    pub fn feed(&mut self, sample: Real) -> Option<RollingStats> {
+        if self.len < self.period {
+            self.values[self.index] = sample;
+            self.sum += sample;
+            self.sum2 += sample * sample;
+            self.len += 1;
+            self.index = (self.index + 1) % self.period;
+
+            if self.len < self.period {
+                return None;
+            }
+        } else {
+            let old = self.values[self.index];
+            self.sum -= old;
+            self.sum2 -= old * old;
+
+            self.values[self.index] = sample;
+            self.sum += sample;
+            self.sum2 += sample * sample;
+            self.index = (self.index + 1) % self.period;
+        }
+
+        let mean = self.sum / self.period as Real;
+        let variance = self.sum2 / self.period as Real - mean * mean;
+        Some(RollingStats { variance })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WmaState {
+    period: usize,
+    weight_total: Real,
+    values: Vec<Real>,
+    cursor: usize,
+    len: usize,
+    sum: Real,
+    weighted_sum: Real,
+}
+
+impl WmaState {
+    pub fn new(period: usize) -> Self {
+        Self {
+            period,
+            weight_total: (period * (period + 1) / 2) as Real,
+            values: vec![0.0; period],
+            cursor: 0,
+            len: 0,
+            sum: 0.0,
+            weighted_sum: 0.0,
+        }
+    }
+
+    pub fn feed(&mut self, sample: Real) -> Option<Real> {
+        if self.len < self.period {
+            self.values[self.len] = sample;
+            self.sum += sample;
+            self.weighted_sum += sample * (self.len + 1) as Real;
+            self.len += 1;
+
+            if self.len == self.period {
+                return Some(self.weighted_sum / self.weight_total);
+            }
+
+            return None;
+        }
+
+        let oldest = self.values[self.cursor];
+        self.weighted_sum = self.weighted_sum - self.sum + sample * self.period as Real;
+        self.sum = self.sum - oldest + sample;
+        self.values[self.cursor] = sample;
+        self.cursor = (self.cursor + 1) % self.period;
+        Some(self.weighted_sum / self.weight_total)
+    }
+}
+
 pub fn true_range(high: Real, low: Real, previous_close: Real) -> Real {
     let ych = (high - previous_close).abs();
     let ycl = (low - previous_close).abs();
