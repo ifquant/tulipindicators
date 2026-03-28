@@ -152,8 +152,8 @@ impl IndicatorStream for KvoStream {
                     self.short_ema = vf;
                     self.long_ema = vf;
                 } else {
-                    self.short_ema = (vf - self.short_ema) * self.short_per + self.short_ema;
-                    self.long_ema = (vf - self.long_ema) * self.long_per + self.long_ema;
+                    self.short_ema = (vf - self.short_ema).mul_add(self.short_per, self.short_ema);
+                    self.long_ema = (vf - self.long_ema).mul_add(self.long_per, self.long_ema);
                 }
 
                 outputs[0][out_index] = self.short_ema - self.long_ema;
@@ -232,8 +232,8 @@ fn run_kvo_batch(
             short_ema = vf;
             long_ema = vf;
         } else {
-            short_ema = (vf - short_ema) * short_per + short_ema;
-            long_ema = (vf - long_ema) * long_per + long_ema;
+            short_ema = (vf - short_ema).mul_add(short_per, short_ema);
+            long_ema = (vf - long_ema).mul_add(long_per, long_ema);
         }
 
         output[out_index] = short_ema - long_ema;
