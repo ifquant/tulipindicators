@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{
     double_input, expect_option_count, parse_usize_option, quadruple_input, single_input,
@@ -173,8 +175,46 @@ impl Indicator for Bop {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = BopStream::new(options)?;
-        stream.feed(inputs)
+        expect_option_count(BOP_METADATA.name, options, 0)?;
+        let (open, high, low, close) = quadruple_input(BOP_METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(open.len());
+
+        for (((&open, &high), &low), &close) in open
+            .iter()
+            .zip(high.iter())
+            .zip(low.iter())
+            .zip(close.iter())
+        {
+            let hl = high - low;
+            output.push(if hl <= 0.0 { 0.0 } else { (close - open) / hl });
+        }
+
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(BOP_METADATA.name, options, 0)?;
+        let (open, high, low, close) = quadruple_input(BOP_METADATA.name, inputs)?;
+        validate_output_slices(&BOP_METADATA, outputs, 1)?;
+        ensure_output_len(&BOP_METADATA, outputs[0].len(), open.len(), 0)?;
+
+        for ((((dst, &open), &high), &low), &close) in outputs[0][..open.len()]
+            .iter_mut()
+            .zip(open.iter())
+            .zip(high.iter())
+            .zip(low.iter())
+            .zip(close.iter())
+        {
+            let hl = high - low;
+            *dst = if hl <= 0.0 { 0.0 } else { (close - open) / hl };
+        }
+
+        Ok(open.len())
     }
 
     fn create_stream(
@@ -195,8 +235,38 @@ impl Indicator for MarketFi {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = MarketFiStream::new(options)?;
-        stream.feed(inputs)
+        expect_option_count(MARKETFI_METADATA.name, options, 0)?;
+        let (high, low, volume) = triple_input(MARKETFI_METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(high.len());
+
+        for ((&high, &low), &volume) in high.iter().zip(low.iter()).zip(volume.iter()) {
+            output.push((high - low) / volume);
+        }
+
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(MARKETFI_METADATA.name, options, 0)?;
+        let (high, low, volume) = triple_input(MARKETFI_METADATA.name, inputs)?;
+        validate_output_slices(&MARKETFI_METADATA, outputs, 1)?;
+        ensure_output_len(&MARKETFI_METADATA, outputs[0].len(), high.len(), 0)?;
+
+        for (((dst, &high), &low), &volume) in outputs[0][..high.len()]
+            .iter_mut()
+            .zip(high.iter())
+            .zip(low.iter())
+            .zip(volume.iter())
+        {
+            *dst = (high - low) / volume;
+        }
+
+        Ok(high.len())
     }
 
     fn create_stream(
@@ -283,8 +353,48 @@ impl Indicator for Tr {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = TrStream::new(options)?;
-        stream.feed(inputs)
+        expect_option_count(TR_METADATA.name, options, 0)?;
+        let (high, low, close) = triple_input(TR_METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(high.len());
+        let mut previous_close = None;
+
+        for ((&high, &low), &close) in high.iter().zip(low.iter()).zip(close.iter()) {
+            output.push(match previous_close {
+                Some(previous_close) => true_range(high, low, previous_close),
+                None => high - low,
+            });
+            previous_close = Some(close);
+        }
+
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(TR_METADATA.name, options, 0)?;
+        let (high, low, close) = triple_input(TR_METADATA.name, inputs)?;
+        validate_output_slices(&TR_METADATA, outputs, 1)?;
+        ensure_output_len(&TR_METADATA, outputs[0].len(), high.len(), 0)?;
+
+        let mut previous_close = None;
+        for (((dst, &high), &low), &close) in outputs[0][..high.len()]
+            .iter_mut()
+            .zip(high.iter())
+            .zip(low.iter())
+            .zip(close.iter())
+        {
+            *dst = match previous_close {
+                Some(previous_close) => true_range(high, low, previous_close),
+                None => high - low,
+            };
+            previous_close = Some(close);
+        }
+
+        Ok(high.len())
     }
 
     fn create_stream(

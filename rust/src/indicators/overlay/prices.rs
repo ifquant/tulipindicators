@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{double_input, expect_option_count, quadruple_input, triple_input};
 
@@ -133,6 +135,29 @@ fn run_double_overlay(
     Ok(vec![output])
 }
 
+fn run_double_overlay_in_place(
+    metadata: &'static IndicatorMetadata,
+    inputs: &[&[Real]],
+    options: &[Real],
+    outputs: &mut [&mut [Real]],
+    op: fn(Real, Real) -> Real,
+) -> Result<usize, IndicatorError> {
+    expect_option_count(metadata.name, options, 0)?;
+    let (first, second) = double_input(metadata.name, inputs)?;
+    validate_output_slices(metadata, outputs, 1)?;
+    ensure_output_len(metadata, outputs[0].len(), first.len(), 0)?;
+
+    for ((dst, &a), &b) in outputs[0][..first.len()]
+        .iter_mut()
+        .zip(first.iter())
+        .zip(second.iter())
+    {
+        *dst = op(a, b);
+    }
+
+    Ok(first.len())
+}
+
 fn run_triple_overlay(
     metadata: &'static IndicatorMetadata,
     inputs: &[&[Real]],
@@ -148,6 +173,30 @@ fn run_triple_overlay(
         .map(|((&a, &b), &c)| op(a, b, c))
         .collect();
     Ok(vec![output])
+}
+
+fn run_triple_overlay_in_place(
+    metadata: &'static IndicatorMetadata,
+    inputs: &[&[Real]],
+    options: &[Real],
+    outputs: &mut [&mut [Real]],
+    op: fn(Real, Real, Real) -> Real,
+) -> Result<usize, IndicatorError> {
+    expect_option_count(metadata.name, options, 0)?;
+    let (first, second, third) = triple_input(metadata.name, inputs)?;
+    validate_output_slices(metadata, outputs, 1)?;
+    ensure_output_len(metadata, outputs[0].len(), first.len(), 0)?;
+
+    for (((dst, &a), &b), &c) in outputs[0][..first.len()]
+        .iter_mut()
+        .zip(first.iter())
+        .zip(second.iter())
+        .zip(third.iter())
+    {
+        *dst = op(a, b, c);
+    }
+
+    Ok(first.len())
 }
 
 fn run_quad_overlay(
@@ -166,6 +215,31 @@ fn run_quad_overlay(
         .map(|(((&a, &b), &c), &d)| op(a, b, c, d))
         .collect();
     Ok(vec![output])
+}
+
+fn run_quad_overlay_in_place(
+    metadata: &'static IndicatorMetadata,
+    inputs: &[&[Real]],
+    options: &[Real],
+    outputs: &mut [&mut [Real]],
+    op: fn(Real, Real, Real, Real) -> Real,
+) -> Result<usize, IndicatorError> {
+    expect_option_count(metadata.name, options, 0)?;
+    let (first, second, third, fourth) = quadruple_input(metadata.name, inputs)?;
+    validate_output_slices(metadata, outputs, 1)?;
+    ensure_output_len(metadata, outputs[0].len(), first.len(), 0)?;
+
+    for ((((dst, &a), &b), &c), &d) in outputs[0][..first.len()]
+        .iter_mut()
+        .zip(first.iter())
+        .zip(second.iter())
+        .zip(third.iter())
+        .zip(fourth.iter())
+    {
+        *dst = op(a, b, c, d);
+    }
+
+    Ok(first.len())
 }
 
 fn avgprice_op(open: Real, high: Real, low: Real, close: Real) -> Real {
@@ -237,6 +311,15 @@ impl Indicator for AvgPrice {
         run_quad_overlay(&AVGPRICE_METADATA, inputs, options, avgprice_op)
     }
 
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        run_quad_overlay_in_place(&AVGPRICE_METADATA, inputs, options, outputs, avgprice_op)
+    }
+
     fn create_stream(
         &self,
         options: &[Real],
@@ -264,6 +347,15 @@ impl Indicator for MedPrice {
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         run_double_overlay(&MEDPRICE_METADATA, inputs, options, medprice_op)
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        run_double_overlay_in_place(&MEDPRICE_METADATA, inputs, options, outputs, medprice_op)
     }
 
     fn create_stream(
@@ -295,6 +387,15 @@ impl Indicator for TypPrice {
         run_triple_overlay(&TYPPRICE_METADATA, inputs, options, typprice_op)
     }
 
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        run_triple_overlay_in_place(&TYPPRICE_METADATA, inputs, options, outputs, typprice_op)
+    }
+
     fn create_stream(
         &self,
         options: &[Real],
@@ -322,6 +423,15 @@ impl Indicator for WcPrice {
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         run_triple_overlay(&WCPRICE_METADATA, inputs, options, wcprice_op)
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        run_triple_overlay_in_place(&WCPRICE_METADATA, inputs, options, outputs, wcprice_op)
     }
 
     fn create_stream(

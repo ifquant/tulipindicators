@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{
     double_input, expect_option_count, parse_usize_option, single_input,
@@ -400,6 +402,30 @@ impl Indicator for Lag {
             return Ok(vec![Vec::new()]);
         }
         Ok(vec![input[..input.len() - period].to_vec()])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(LAG_METADATA.name, inputs)?;
+        let period = parse_nonnegative_period(LAG_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period);
+        validate_output_slices(&LAG_METADATA, outputs, 1)?;
+        ensure_output_len(&LAG_METADATA, outputs[0].len(), output_len, 0)?;
+
+        if period == 0 {
+            outputs[0][..input.len()].copy_from_slice(input);
+            return Ok(input.len());
+        }
+        if input.len() <= period {
+            return Ok(0);
+        }
+
+        outputs[0][..output_len].copy_from_slice(&input[..output_len]);
+        Ok(output_len)
     }
 
     fn create_stream(
