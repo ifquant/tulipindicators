@@ -666,20 +666,53 @@ fn run_midpoint_batch(input: &[Real], period: usize, output: &mut [Real]) -> usi
         return 0;
     }
 
-    let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
-    let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+    let mut trail = 0usize;
+    let mut maxi = -1isize;
+    let mut mini = -1isize;
+    let mut max = input[0];
+    let mut min = input[0];
     let mut out_index = 0usize;
 
-    for (index, &sample) in input.iter().enumerate() {
-        max_queue.push(index, sample);
-        min_queue.push(index, sample);
-        let window_start = index + 1 - period.min(index + 1);
-        max_queue.evict_before(window_start);
-        min_queue.evict_before(window_start);
-        if index + 1 >= period {
-            output[out_index] = (max_queue.front_value() + min_queue.front_value()) * 0.5;
-            out_index += 1;
+    for index in (period - 1)..input.len() {
+        let value = input[index];
+
+        if maxi < trail as isize {
+            maxi = trail as isize;
+            max = input[trail];
+            let mut scan = trail + 1;
+            while scan <= index {
+                let sample = input[scan];
+                if sample >= max {
+                    max = sample;
+                    maxi = scan as isize;
+                }
+                scan += 1;
+            }
+        } else if value >= max {
+            max = value;
+            maxi = index as isize;
         }
+
+        if mini < trail as isize {
+            mini = trail as isize;
+            min = input[trail];
+            let mut scan = trail + 1;
+            while scan <= index {
+                let sample = input[scan];
+                if sample <= min {
+                    min = sample;
+                    mini = scan as isize;
+                }
+                scan += 1;
+            }
+        } else if value <= min {
+            min = value;
+            mini = index as isize;
+        }
+
+        output[out_index] = (max + min) * 0.5;
+        out_index += 1;
+        trail += 1;
     }
 
     out_index
