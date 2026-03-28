@@ -130,8 +130,25 @@ impl Indicator for Ad {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = AdStream::new(options)?;
-        stream.feed(inputs)
+        expect_option_count(AD_METADATA.name, options, 0)?;
+        let (high, low, close, volume) = quadruple_input(AD_METADATA.name, inputs)?;
+        let mut output = vec![0.0; high.len()];
+        let output_len = run_ad_batch(high, low, close, volume, &mut output)?;
+        output.truncate(output_len);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(AD_METADATA.name, options, 0)?;
+        let (high, low, close, volume) = quadruple_input(AD_METADATA.name, inputs)?;
+        validate_output_slices(&AD_METADATA, outputs, 1)?;
+        ensure_output_len(&AD_METADATA, outputs[0].len(), high.len(), 0)?;
+        run_ad_batch(high, low, close, volume, outputs[0])
     }
 
     fn create_stream(
@@ -737,6 +754,26 @@ impl IndicatorStream for AdOscStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_ad_batch(
+    high: &[Real],
+    low: &[Real],
+    close: &[Real],
+    volume: &[Real],
+    output: &mut [Real],
+) -> Result<usize, IndicatorError> {
+    let mut sum = 0.0;
+
+    for index in 0..high.len() {
+        let hl = high[index] - low[index];
+        if hl != 0.0 {
+            sum += (close[index] - low[index] - high[index] + close[index]) / hl * volume[index];
+        }
+        output[index] = sum;
+    }
+
+    Ok(high.len())
 }
 
 struct BopStream {
