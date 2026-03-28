@@ -136,7 +136,7 @@ impl IndicatorStream for EmaStream {
 
         for _ in 1..input.len() {
             let sample = unsafe { *input_ptr };
-            value = (sample - value) * self.multiplier + value;
+            value = (sample - value).mul_add(self.multiplier, value);
             unsafe {
                 *out_ptr = value;
                 input_ptr = input_ptr.add(1);
@@ -167,7 +167,7 @@ fn run_ema_batch(input: &[Real], multiplier: Real, output: &mut [Real]) -> usize
 
         for _ in 1..input.len() {
             let sample = *input_ptr;
-            value = (sample - value) * multiplier + value;
+            value = (sample - value).mul_add(multiplier, value);
             *out_ptr = value;
             input_ptr = input_ptr.add(1);
             out_ptr = out_ptr.add(1);
