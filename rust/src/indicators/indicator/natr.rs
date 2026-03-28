@@ -49,7 +49,7 @@ impl Indicator for Natr {
 
         for index in period..high.len() {
             let tr = true_range(high[index], low[index], close[index - 1]);
-            value = (tr - value) * per + value;
+            value = (tr - value).mul_add(per, value);
             output.push(100.0 * value / close[index]);
         }
 
@@ -84,7 +84,7 @@ impl Indicator for Natr {
 
         for index in period..high.len() {
             let tr = true_range(high[index], low[index], close[index - 1]);
-            value = (tr - value) * per + value;
+            value = (tr - value).mul_add(per, value);
             outputs[0][out_index] = 100.0 * value / close[index];
             out_index += 1;
         }
@@ -190,7 +190,7 @@ impl IndicatorStream for NatrStream {
                     out_index += 1;
                 }
             } else if let Some(current_atr) = last_atr {
-                let atr = (tr - current_atr) * per + current_atr;
+                let atr = (tr - current_atr).mul_add(per, current_atr);
                 last_atr = Some(atr);
                 outputs[0][out_index] = 100.0 * atr / close[index];
                 out_index += 1;
