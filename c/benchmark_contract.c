@@ -7,8 +7,9 @@
 #include <sys/time.h>
 
 #define DEFAULT_STREAM_CHUNK 64
-#define DEFAULT_MIN_ITERATIONS 8
-#define DEFAULT_TARGET_MS 200
+#define DEFAULT_MIN_ITERATIONS 16
+#define DEFAULT_TARGET_MS 1000
+#define DEFAULT_REPEATS 3
 
 typedef struct {
     int *sizes;
@@ -16,6 +17,7 @@ typedef struct {
     int stream_chunk_size;
     int min_iterations;
     int target_ms;
+    int repeats;
     char *indicator_filter;
 } bench_config;
 
@@ -128,6 +130,7 @@ static void load_config(bench_config *config) {
     config->min_iterations =
         parse_positive_int(getenv("TI_BENCH_MIN_ITERATIONS"), DEFAULT_MIN_ITERATIONS);
     config->target_ms = parse_positive_int(getenv("TI_BENCH_TARGET_MS"), DEFAULT_TARGET_MS);
+    config->repeats = parse_positive_int(getenv("TI_BENCH_REPEATS"), DEFAULT_REPEATS);
     if (indicator_filter && *indicator_filter) {
         const size_t len = strlen(indicator_filter);
         config->indicator_filter = malloc(len + 1u);
@@ -149,6 +152,19 @@ static int choose_iterations(int input_len, const bench_config *config) {
         iterations = config->min_iterations;
     }
     return iterations;
+}
+
+static int compare_double(const void *lhs, const void *rhs) {
+    const double a = *(const double *)lhs;
+    const double b = *(const double *)rhs;
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
+
+static double median_double(double *samples, int count) {
+    qsort(samples, (size_t)count, sizeof(double), compare_double);
+    return samples[count / 2];
 }
 
 static TI_REAL default_period(int input_len) {
@@ -294,17 +310,27 @@ static int run_batch_benchmark(
     }
 
     {
-        const double start_ms = now_ms();
-        for (i = 0; i < iterations; ++i) {
-            const int rc = info->indicator(input_len, inputs, options, outputs);
-            if (rc != TI_OKAY) {
-                return rc;
-            }
-            if (output_len > 0 && info->outputs > 0) {
-                bench_sink += outputs[0][output_len - 1];
-            }
+        double *samples = calloc((size_t)config->repeats, sizeof(double));
+        int repeat_index;
+        if (!samples) {
+            return TI_OUT_OF_MEMORY;
         }
-        result->total_ms = now_ms() - start_ms;
+        for (repeat_index = 0; repeat_index < config->repeats; ++repeat_index) {
+            const double start_ms = now_ms();
+            for (i = 0; i < iterations; ++i) {
+                const int rc = info->indicator(input_len, inputs, options, outputs);
+                if (rc != TI_OKAY) {
+                    free(samples);
+                    return rc;
+                }
+                if (output_len > 0 && info->outputs > 0) {
+                    bench_sink += outputs[0][output_len - 1];
+                }
+            }
+            samples[repeat_index] = now_ms() - start_ms;
+        }
+        result->total_ms = median_double(samples, config->repeats);
+        free(samples);
     }
 
     for (j = 0; j < info->outputs; ++j) {
@@ -382,46 +408,57 @@ static int run_stream_benchmark(
     }
 
     {
-        int i;
-        const double start_ms = now_ms();
-        for (i = 0; i < iterations; ++i) {
-            ti_stream *stream = 0;
-            const int create_rc = info->stream_new(options, &stream);
-            int start_index = 0;
-            if (create_rc != TI_OKAY) {
-                return create_rc;
-            }
-            while (start_index < input_len) {
-                const int end = start_index + config->stream_chunk_size < input_len
-                    ? start_index + config->stream_chunk_size
-                    : input_len;
-                const int chunk_len = end - start_index;
-                const TI_REAL *chunk_inputs[TI_MAXINDPARAMS] = {0};
-                const int progress_before = ti_stream_get_progress(stream);
-                int delta_outputs;
-                for (j = 0; j < info->inputs; ++j) {
-                    chunk_inputs[j] = inputs[j] + start_index;
-                }
-                {
-                    const int rc = ti_stream_run(stream, chunk_len, chunk_inputs, chunk_outputs);
-                    if (rc != TI_OKAY) {
-                        ti_stream_free(stream);
-                        return rc;
-                    }
-                }
-                delta_outputs = stream_outputs_delta(
-                    progress_before,
-                    ti_stream_get_progress(stream),
-                    start
-                );
-                if (delta_outputs > 0 && info->outputs > 0) {
-                    bench_sink += chunk_outputs[0][delta_outputs - 1];
-                }
-                start_index = end;
-            }
-            ti_stream_free(stream);
+        double *samples = calloc((size_t)config->repeats, sizeof(double));
+        int repeat_index;
+        if (!samples) {
+            return TI_OUT_OF_MEMORY;
         }
-        result->total_ms = now_ms() - start_ms;
+        for (repeat_index = 0; repeat_index < config->repeats; ++repeat_index) {
+            int i;
+            const double start_ms = now_ms();
+            for (i = 0; i < iterations; ++i) {
+                ti_stream *stream = 0;
+                const int create_rc = info->stream_new(options, &stream);
+                int start_index = 0;
+                if (create_rc != TI_OKAY) {
+                    free(samples);
+                    return create_rc;
+                }
+                while (start_index < input_len) {
+                    const int end = start_index + config->stream_chunk_size < input_len
+                        ? start_index + config->stream_chunk_size
+                        : input_len;
+                    const int chunk_len = end - start_index;
+                    const TI_REAL *chunk_inputs[TI_MAXINDPARAMS] = {0};
+                    const int progress_before = ti_stream_get_progress(stream);
+                    int delta_outputs;
+                    for (j = 0; j < info->inputs; ++j) {
+                        chunk_inputs[j] = inputs[j] + start_index;
+                    }
+                    {
+                        const int rc = ti_stream_run(stream, chunk_len, chunk_inputs, chunk_outputs);
+                        if (rc != TI_OKAY) {
+                            ti_stream_free(stream);
+                            free(samples);
+                            return rc;
+                        }
+                    }
+                    delta_outputs = stream_outputs_delta(
+                        progress_before,
+                        ti_stream_get_progress(stream),
+                        start
+                    );
+                    if (delta_outputs > 0 && info->outputs > 0) {
+                        bench_sink += chunk_outputs[0][delta_outputs - 1];
+                    }
+                    start_index = end;
+                }
+                ti_stream_free(stream);
+            }
+            samples[repeat_index] = now_ms() - start_ms;
+        }
+        result->total_ms = median_double(samples, config->repeats);
+        free(samples);
     }
 
     for (j = 0; j < info->outputs; ++j) {

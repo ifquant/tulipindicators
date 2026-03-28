@@ -41,6 +41,7 @@
 - Rust benchmark：`cargo run --release --bin indicator-bench`
 - C contract benchmark：`make benchmark_contract`
 - C/Rust benchmark 对比：`cargo run --release --bin indicator-bench-compare`
+- 如需提高 benchmark 稳定性，优先调大：`TI_BENCH_TARGET_MS`、`TI_BENCH_MIN_ITERATIONS`、`TI_BENCH_REPEATS`
 - 构建：`make`
 - 仅运行某个模块/包：根目录可继续运行 `make sample`、`make example1`、`make example2`、`make cli`、`make benchmark`、`make fuzzer`；C 侧真实实现位于 `c/`，Rust 侧真实实现位于 `rust/`
 - 清理构建产物：`make clean`

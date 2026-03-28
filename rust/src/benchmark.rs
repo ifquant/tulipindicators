@@ -8,10 +8,11 @@ use std::hint::black_box;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-const DEFAULT_SIZES: &[usize] = &[256, 4096, 65_536];
+const DEFAULT_SIZES: &[usize] = &[256, 4096, 65_536, 262_144];
 const DEFAULT_STREAM_CHUNK: usize = 64;
-const DEFAULT_MIN_ITERATIONS: usize = 8;
-const DEFAULT_TARGET_MS: u64 = 200;
+const DEFAULT_MIN_ITERATIONS: usize = 16;
+const DEFAULT_TARGET_MS: u64 = 1_000;
+const DEFAULT_REPEATS: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct BenchmarkConfig {
@@ -19,6 +20,7 @@ pub struct BenchmarkConfig {
     pub stream_chunk_size: usize,
     pub min_iterations: usize,
     pub target_duration: Duration,
+    pub repeats: usize,
     pub output_dir: PathBuf,
 }
 
@@ -29,6 +31,7 @@ impl Default for BenchmarkConfig {
             stream_chunk_size: DEFAULT_STREAM_CHUNK,
             min_iterations: DEFAULT_MIN_ITERATIONS,
             target_duration: Duration::from_millis(DEFAULT_TARGET_MS),
+            repeats: DEFAULT_REPEATS,
             output_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("target")
                 .join("indicator-bench"),
@@ -67,6 +70,14 @@ impl BenchmarkConfig {
             if let Ok(value) = raw.parse::<u64>() {
                 if value > 0 {
                     config.target_duration = Duration::from_millis(value);
+                }
+            }
+        }
+
+        if let Ok(raw) = std::env::var("TI_BENCH_REPEATS") {
+            if let Ok(value) = raw.parse::<usize>() {
+                if value > 0 {
+                    config.repeats = value;
                 }
             }
         }
@@ -248,21 +259,26 @@ fn run_batch_benchmark(
         }
     }
 
-    let start = Instant::now();
-    for _ in 0..iterations {
-        let mut outputs: Vec<&mut [Real]> =
-            output_buffers.iter_mut().map(Vec::as_mut_slice).collect();
-        let produced = scenario
-            .indicator
-            .run_in_place(&inputs, &scenario.options, &mut outputs)?;
-        let sink = outputs
-            .first()
-            .and_then(|output| output.get(produced.saturating_sub(1)))
-            .copied()
-            .unwrap_or(0.0);
-        black_box((produced, sink));
+    let mut samples = Vec::with_capacity(config.repeats);
+    for _ in 0..config.repeats {
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let mut outputs: Vec<&mut [Real]> =
+                output_buffers.iter_mut().map(Vec::as_mut_slice).collect();
+            let produced =
+                scenario
+                    .indicator
+                    .run_in_place(&inputs, &scenario.options, &mut outputs)?;
+            let sink = outputs
+                .first()
+                .and_then(|output| output.get(produced.saturating_sub(1)))
+                .copied()
+                .unwrap_or(0.0);
+            black_box((produced, sink));
+        }
+        samples.push(start.elapsed());
     }
-    let elapsed = start.elapsed();
+    let elapsed = median_duration(samples);
 
     Ok(BenchmarkResult {
         indicator: metadata.name,
@@ -292,18 +308,25 @@ fn run_stream_benchmark(
     )?;
     let iterations = choose_iterations(scenario.inputs[0].len(), config);
 
-    let start = Instant::now();
-    for _ in 0..iterations {
-        let mut stream = scenario.indicator.create_stream(&scenario.options)?.ok_or(
-            IndicatorError::MissingStreamSupport {
-                indicator: scenario.indicator.metadata().name,
-            },
-        )?;
-        let outputs =
-            collect_stream_outputs(stream.as_mut(), &scenario.inputs, config.stream_chunk_size)?;
-        black_box(outputs);
+    let mut samples = Vec::with_capacity(config.repeats);
+    for _ in 0..config.repeats {
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let mut stream = scenario.indicator.create_stream(&scenario.options)?.ok_or(
+                IndicatorError::MissingStreamSupport {
+                    indicator: scenario.indicator.metadata().name,
+                },
+            )?;
+            let outputs = collect_stream_outputs(
+                stream.as_mut(),
+                &scenario.inputs,
+                config.stream_chunk_size,
+            )?;
+            black_box(outputs);
+        }
+        samples.push(start.elapsed());
     }
-    let elapsed = start.elapsed();
+    let elapsed = median_duration(samples);
 
     Ok(BenchmarkResult {
         indicator: scenario.indicator.metadata().name,
@@ -349,6 +372,11 @@ fn choose_iterations(input_len: usize, config: &BenchmarkConfig) -> usize {
         / DEFAULT_TARGET_MS as usize;
     let iterations = target_work / input_len.max(1);
     iterations.max(config.min_iterations)
+}
+
+fn median_duration(mut samples: Vec<Duration>) -> Duration {
+    samples.sort_unstable();
+    samples[samples.len() / 2]
 }
 
 fn build_options(option_names: &[&str], input_len: usize) -> Vec<Real> {
