@@ -7,6 +7,7 @@ mod sma;
 mod tema;
 mod vidya;
 mod wilders;
+mod wma;
 
 pub use bbands::Bbands;
 pub use dema::Dema;
@@ -17,3 +18,4 @@ pub use sma::Sma;
 pub use tema::Tema;
 pub use vidya::Vidya;
 pub use wilders::Wilders;
+pub use wma::Wma;

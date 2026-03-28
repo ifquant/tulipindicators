@@ -2,7 +2,7 @@ use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
     Adx, Adxr, Atr, Di, Dm, Dx, Macd, Rsi, StdDev, StdErr, Stoch, StochRsi, Trix, Var,
 };
-use crate::indicators::overlay::{Bbands, Dema, Ema, Hma, Kama, Sma, Tema, Vidya, Wilders};
+use crate::indicators::overlay::{Bbands, Dema, Ema, Hma, Kama, Sma, Tema, Vidya, Wilders, Wma};
 
 pub static ADX: Adx = Adx;
 pub static ADXR: Adxr = Adxr;
@@ -27,11 +27,12 @@ pub static TRIX: Trix = Trix;
 pub static VAR: Var = Var;
 pub static VIDYA: Vidya = Vidya;
 pub static WILDERS: Wilders = Wilders;
+pub static WMA: Wma = Wma;
 
-pub fn all() -> [&'static dyn Indicator; 23] {
+pub fn all() -> [&'static dyn Indicator; 24] {
     [
         &ADX, &ADXR, &ATR, &BBANDS, &DEMA, &DI, &DM, &DX, &EMA, &HMA, &KAMA, &MACD, &RSI, &SMA,
-        &STDERR, &STDDEV, &STOCH, &STOCHRSI, &TEMA, &TRIX, &VAR, &VIDYA, &WILDERS,
+        &STDERR, &STDDEV, &STOCH, &STOCHRSI, &TEMA, &TRIX, &VAR, &VIDYA, &WILDERS, &WMA,
     ]
 }
 
@@ -60,6 +61,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "var" => Some(&VAR),
         "vidya" => Some(&VIDYA),
         "wilders" => Some(&WILDERS),
+        "wma" => Some(&WMA),
         _ => None,
     }
 }
