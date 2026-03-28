@@ -73,3 +73,17 @@
 - 可以直接复用现有 `linreg` / `linregslope` / `max` / `min` / `rocr` 的实现模式
 - 不需要先引入 TA-Lib 风格的可变 MA 类型系统
 - 语义明确，不会和现有指标重叠
+
+## 第二批实现
+
+第二批优先补窗口索引家族：
+
+- `maxindex`
+- `minindex`
+- `minmax`
+- `minmaxindex`
+
+这一批的特点是：
+- 和现有 `max` / `min` / `midpoint` 共用同一类滑窗极值语义
+- 比 `beta` / `correl` 更容易先接进 Tulip 现有 math 指标体系
+- 可以同时补齐 C、Rust、parity 和 benchmark，而不用先引入新的统计类型系统

@@ -33,16 +33,50 @@ fn first_missing_batch_matches_c_and_expected_values() {
         &[vec![1.0, 2.0, 3.0, 4.0]],
         &[vec![45.0]],
     );
+    assert_case(
+        "maxindex",
+        &[3.0],
+        &[vec![1.0, 6.0, 4.0, 9.0, 2.0, 3.0, 4.0]],
+        &[vec![1.0, 3.0, 3.0, 3.0, 6.0]],
+    );
+    assert_case(
+        "minindex",
+        &[3.0],
+        &[vec![1.0, 5.0, 7.0, 9.0, 2.0, 3.0, 4.0]],
+        &[vec![0.0, 1.0, 4.0, 4.0, 4.0]],
+    );
+    assert_case(
+        "minmax",
+        &[3.0],
+        &[vec![1.0, 5.0, 7.0, 9.0, 2.0, 3.0, 4.0]],
+        &[vec![1.0, 5.0, 2.0, 2.0, 2.0], vec![7.0, 9.0, 9.0, 9.0, 4.0]],
+    );
+    assert_case(
+        "minmaxindex",
+        &[3.0],
+        &[vec![1.0, 5.0, 7.0, 9.0, 2.0, 3.0, 4.0]],
+        &[vec![0.0, 1.0, 4.0, 4.0, 4.0], vec![2.0, 3.0, 3.0, 3.0, 6.0]],
+    );
 }
 
 fn assert_case(name: &str, options: &[Real], inputs: &[Vec<Real>], expected: &[Vec<Real>]) {
     let indicator = tulipindicators::find(name).expect("indicator should be registered");
     let rust_inputs: Vec<&[Real]> = inputs.iter().map(Vec::as_slice).collect();
-    let rust_outputs = indicator.run(&rust_inputs, options).expect("rust run should succeed");
+    let rust_outputs = indicator
+        .run(&rust_inputs, options)
+        .expect("rust run should succeed");
     let c_outputs = run_c_oracle(&ensure_stable_oracle(), name, options, inputs);
 
-    assert_eq!(rust_outputs.len(), expected.len(), "{name} output count drifted");
-    assert_eq!(c_outputs.len(), expected.len(), "{name} c output count drifted");
+    assert_eq!(
+        rust_outputs.len(),
+        expected.len(),
+        "{name} output count drifted"
+    );
+    assert_eq!(
+        c_outputs.len(),
+        expected.len(),
+        "{name} c output count drifted"
+    );
 
     for output_index in 0..expected.len() {
         let rust_output = &rust_outputs[output_index];
@@ -93,7 +127,10 @@ fn ensure_stable_oracle() -> PathBuf {
                 .arg("libindicators.a")
                 .status()
                 .expect("failed to build c library for stable oracle");
-            assert!(status.success(), "failed to build c library for stable oracle");
+            assert!(
+                status.success(),
+                "failed to build c library for stable oracle"
+            );
 
             let helper = repo_root
                 .join("rust")

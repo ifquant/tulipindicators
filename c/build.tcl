@@ -142,8 +142,12 @@ lappend indicators [list indicator "Rate of Change Ratio 100 Scale" rocr100 1 1 
 #Math functions
 lappend indicators [list math "Lag" lag 1 1 1 {real} {period} {lag}]
 lappend indicators [list math "Maximum In Period" max 1 1 1 {real} {period} {max} {ref}]
+lappend indicators [list math "Maximum Index In Period" maxindex 1 1 1 {real} {period} {maxindex}]
 lappend indicators [list math "Midpoint Over Period" midpoint 1 1 1 {real} {period} {midpoint}]
 lappend indicators [list math "Minimum In Period" min 1 1 1 {real} {period} {min} {ref}]
+lappend indicators [list math "Minimum Index In Period" minindex 1 1 1 {real} {period} {minindex}]
+lappend indicators [list math "Minimum And Maximum In Period" minmax 1 1 2 {real} {period} {min max}]
+lappend indicators [list math "Minimum And Maximum Index In Period" minmaxindex 1 1 2 {real} {period} {minindex maxindex}]
 lappend indicators [list math "Sum Over Period" sum 1 1 1 {real} {period} {sum}]
 lappend indicators [list math "Standard Deviation Over Period" stddev 1 1 1 {real} {period} {stddev}]
 lappend indicators [list math "Standard Error Over Period" stderr 1 1 1 {real} {period} {stderr}]

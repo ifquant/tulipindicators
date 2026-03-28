@@ -6,7 +6,10 @@ use crate::indicators::indicator::{
     Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf, Tsi,
     UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
 };
-use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, MidPoint, Min, Sum};
+use crate::indicators::math::{
+    CrossAny, Crossover, Decay, EDecay, Lag, Max, MaxIndex, MidPoint, Min, MinIndex, MinMax,
+    MinMaxIndex, Sum,
+};
 use crate::indicators::overlay::{
     Abands, Alma, AvgPrice, Bbands, Ce, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, Mama, MedPrice,
     MidPrice, Pbands, Pc, Rmta, Sma, Tema, Trima, TypPrice, Vidya, Vwap, Vwma, WcPrice, Wilders,
@@ -80,12 +83,16 @@ pub static MAMA: Mama = Mama;
 pub static MARKETFI: MarketFi = MarketFi;
 pub static MASS: Mass = Mass;
 pub static MAX: Max = Max;
+pub static MAXINDEX: MaxIndex = MaxIndex;
 pub static MD: Md = Md;
 pub static MEDPRICE: MedPrice = MedPrice;
 pub static MIDPOINT: MidPoint = MidPoint;
 pub static MIDPRICE: MidPrice = MidPrice;
 pub static MFI: Mfi = Mfi;
 pub static MIN: Min = Min;
+pub static MININDEX: MinIndex = MinIndex;
+pub static MINMAX: MinMax = MinMax;
+pub static MINMAXINDEX: MinMaxIndex = MinMaxIndex;
 pub static MOM: Mom = Mom;
 pub static MSW: Msw = Msw;
 pub static MUL: Mul = Mul;
@@ -147,7 +154,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 129] {
+pub fn all() -> [&'static dyn Indicator; 133] {
     [
         &ABS,
         &ACOS,
@@ -212,12 +219,16 @@ pub fn all() -> [&'static dyn Indicator; 129] {
         &MARKETFI,
         &MASS,
         &MAX,
+        &MAXINDEX,
         &MD,
         &MEDPRICE,
         &MIDPOINT,
         &MIDPRICE,
         &MFI,
         &MIN,
+        &MININDEX,
+        &MINMAX,
+        &MINMAXINDEX,
         &MOM,
         &MSW,
         &MUL,
@@ -346,12 +357,16 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "marketfi" => Some(&MARKETFI),
         "mass" => Some(&MASS),
         "max" => Some(&MAX),
+        "maxindex" => Some(&MAXINDEX),
         "md" => Some(&MD),
         "medprice" => Some(&MEDPRICE),
         "midpoint" => Some(&MIDPOINT),
         "midprice" => Some(&MIDPRICE),
         "mfi" => Some(&MFI),
         "min" => Some(&MIN),
+        "minindex" => Some(&MININDEX),
+        "minmax" => Some(&MINMAX),
+        "minmaxindex" => Some(&MINMAXINDEX),
         "mom" => Some(&MOM),
         "msw" => Some(&MSW),
         "mul" => Some(&MUL),

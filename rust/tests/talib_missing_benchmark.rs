@@ -5,7 +5,16 @@ use std::time::Duration;
 
 use tulipindicators::benchmark::{run_named_benchmarks, BenchmarkConfig, BenchmarkMode};
 
-const INDICATORS: &[&str] = &["linearregangle", "midpoint", "midprice", "rocr100"];
+const INDICATORS: &[&str] = &[
+    "linearregangle",
+    "midpoint",
+    "midprice",
+    "rocr100",
+    "maxindex",
+    "minindex",
+    "minmax",
+    "minmaxindex",
+];
 
 #[test]
 fn first_missing_batch_is_covered_by_c_and_rust_benchmarks() {
@@ -23,7 +32,10 @@ fn first_missing_batch_is_covered_by_c_and_rust_benchmarks() {
 
     let rust_rows = run_named_benchmarks(
         &config,
-        &INDICATORS.iter().map(|name| (*name).to_string()).collect::<Vec<_>>(),
+        &INDICATORS
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect::<Vec<_>>(),
     )
     .expect("rust benchmarks should run");
     let c_rows = run_c_benchmark_rows();
@@ -50,10 +62,19 @@ fn first_missing_batch_is_covered_by_c_and_rust_benchmarks() {
         let c = c_batch
             .get(&key)
             .unwrap_or_else(|| panic!("missing C benchmark row for {indicator}"));
-        assert!(rust.is_finite() && *rust > 0.0, "invalid Rust ns/input for {indicator}");
-        assert!(c.is_finite() && *c > 0.0, "invalid C ns/input for {indicator}");
+        assert!(
+            rust.is_finite() && *rust > 0.0,
+            "invalid Rust ns/input for {indicator}"
+        );
+        assert!(
+            c.is_finite() && *c > 0.0,
+            "invalid C ns/input for {indicator}"
+        );
         let ratio = rust / c;
-        assert!(ratio.is_finite() && ratio > 0.0, "invalid C/Rust ratio for {indicator}");
+        assert!(
+            ratio.is_finite() && ratio > 0.0,
+            "invalid C/Rust ratio for {indicator}"
+        );
     }
 }
 
