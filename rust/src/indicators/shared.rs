@@ -420,6 +420,44 @@ impl RollingStatsState {
     }
 }
 
+pub fn rolling_variance_batch<F>(
+    input: &[Real],
+    period: usize,
+    output: &mut [Real],
+    mut map: F,
+) -> usize
+where
+    F: FnMut(Real) -> Real,
+{
+    if input.len() < period {
+        return 0;
+    }
+
+    let scale = 1.0 / period as Real;
+    let mut sum = 0.0;
+    let mut sum2 = 0.0;
+
+    for &sample in &input[..period] {
+        sum += sample;
+        sum2 += sample * sample;
+    }
+
+    let mut out_index = 0usize;
+    output[out_index] = map(sum2 * scale - (sum * scale) * (sum * scale));
+    out_index += 1;
+
+    for index in period..input.len() {
+        let sample = input[index];
+        let old = input[index - period];
+        sum += sample - old;
+        sum2 += sample * sample - old * old;
+        output[out_index] = map(sum2 * scale - (sum * scale) * (sum * scale));
+        out_index += 1;
+    }
+
+    out_index
+}
+
 #[derive(Debug, Clone)]
 pub struct WmaState {
     period: usize,
