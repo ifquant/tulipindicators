@@ -19,3 +19,7 @@ path = "rust/tests/golden_indicators.rs"
 [[test]]
 name = "beta_parity"
 path = "rust/tests/beta_parity.rs"
+
+[[test]]
+name = "stable_parity"
+path = "rust/tests/stable_parity.rs"
