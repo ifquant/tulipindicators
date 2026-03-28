@@ -190,8 +190,32 @@ impl Indicator for Cvi {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = CviStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low) = double_input(CVI_METADATA.name, inputs)?;
+        let period = parse_period(CVI_METADATA.name, options)?;
+        let output_len = high.len().saturating_sub(period * 2 - 1);
+        let mut output = vec![0.0; output_len];
+        let produced = run_cvi_batch(high, low, period, &mut output);
+        debug_assert_eq!(produced, output_len);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(CVI_METADATA.name, inputs)?;
+        let period = parse_period(CVI_METADATA.name, options)?;
+        let output_len = high.len().saturating_sub(period * 2 - 1);
+        validate_output_slices(&CVI_METADATA, outputs, 1)?;
+        ensure_output_len(&CVI_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_cvi_batch(
+            high,
+            low,
+            period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -564,6 +588,42 @@ fn run_cmo_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
     }
 
     output.len()
+}
+
+fn run_cvi_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real]) -> usize {
+    let lookback = period * 2 - 1;
+    if high.len() <= lookback {
+        return 0;
+    }
+
+    let per = 2.0 / (period as Real + 1.0);
+    let mut lag = vec![0.0; period];
+    let mut lag_index = 0usize;
+    let mut val = high[0] - low[0];
+
+    for index in 1..lookback {
+        val = ((high[index] - low[index]) - val) * per + val;
+        lag[lag_index] = val;
+        lag_index += 1;
+        if lag_index == period {
+            lag_index = 0;
+        }
+    }
+
+    let mut out_index = 0usize;
+    for index in lookback..high.len() {
+        val = ((high[index] - low[index]) - val) * per + val;
+        let old = lag[lag_index];
+        output[out_index] = 100.0 * (val - old) / old;
+        lag[lag_index] = val;
+        lag_index += 1;
+        if lag_index == period {
+            lag_index = 0;
+        }
+        out_index += 1;
+    }
+
+    out_index
 }
 
 struct CviStream {
