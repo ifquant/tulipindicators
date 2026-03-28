@@ -10,7 +10,7 @@
 #define DEFAULT_MIN_ITERATIONS 16
 #define DEFAULT_TARGET_MS 1000
 #define DEFAULT_CALIBRATION_MS 50
-#define DEFAULT_REPEATS 3
+#define DEFAULT_REPEATS 5
 
 typedef struct {
     int *sizes;
@@ -27,9 +27,13 @@ typedef struct {
     const char *indicator;
     const char *mode;
     int input_len;
+    int calibration_runs;
+    double calibration_ms;
     int iterations;
     int total_outputs;
+    double sample_min_ms;
     double total_ms;
+    double sample_max_ms;
     double ns_per_input;
 } bench_result;
 
@@ -178,6 +182,28 @@ static int compare_double(const void *lhs, const void *rhs) {
 static double median_double(double *samples, int count) {
     qsort(samples, (size_t)count, sizeof(double), compare_double);
     return samples[count / 2];
+}
+
+static double min_double(const double *samples, int count) {
+    double value = samples[0];
+    int i;
+    for (i = 1; i < count; ++i) {
+        if (samples[i] < value) {
+            value = samples[i];
+        }
+    }
+    return value;
+}
+
+static double max_double(const double *samples, int count) {
+    double value = samples[0];
+    int i;
+    for (i = 1; i < count; ++i) {
+        if (samples[i] > value) {
+            value = samples[i];
+        }
+    }
+    return value;
 }
 
 static TI_REAL default_period(int input_len) {
@@ -343,6 +369,8 @@ static int run_batch_benchmark(
             calibration_runs *= 2;
         }
         iterations = iterations_from_calibration(calibration_ms, calibration_runs, config);
+        result->calibration_runs = calibration_runs;
+        result->calibration_ms = calibration_ms;
     }
 
     {
@@ -365,7 +393,9 @@ static int run_batch_benchmark(
             }
             samples[repeat_index] = now_ms() - start_ms;
         }
+        result->sample_min_ms = min_double(samples, config->repeats);
         result->total_ms = median_double(samples, config->repeats);
+        result->sample_max_ms = max_double(samples, config->repeats);
         free(samples);
     }
 
@@ -493,6 +523,8 @@ static int run_stream_benchmark(
             calibration_runs *= 2;
         }
         iterations = iterations_from_calibration(calibration_ms, calibration_runs, config);
+        result->calibration_runs = calibration_runs;
+        result->calibration_ms = calibration_ms;
     }
 
     {
@@ -544,7 +576,9 @@ static int run_stream_benchmark(
             }
             samples[repeat_index] = now_ms() - start_ms;
         }
+        result->sample_min_ms = min_double(samples, config->repeats);
         result->total_ms = median_double(samples, config->repeats);
+        result->sample_max_ms = max_double(samples, config->repeats);
         free(samples);
     }
 
@@ -563,13 +597,17 @@ static int run_stream_benchmark(
 
 static void print_result(const bench_result *result) {
     printf(
-        "%s\t%s\t%d\t%d\t%d\t%.3f\t%.2f\n",
+        "%s\t%s\t%d\t%d\t%.3f\t%d\t%d\t%.3f\t%.3f\t%.3f\t%.2f\n",
         result->indicator,
         result->mode,
         result->input_len,
+        result->calibration_runs,
+        result->calibration_ms,
         result->iterations,
         result->total_outputs,
+        result->sample_min_ms,
         result->total_ms,
+        result->sample_max_ms,
         result->ns_per_input
     );
 }
@@ -578,7 +616,7 @@ int main(void) {
     bench_config config;
     load_config(&config);
 
-    printf("indicator\tmode\tinput_len\titerations\toutputs\ttotal_ms\tns_per_input\n");
+    printf("indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tns_per_input\n");
 
     {
         int size_index;

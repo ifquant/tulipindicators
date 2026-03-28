@@ -13,7 +13,7 @@ const DEFAULT_STREAM_CHUNK: usize = 1024;
 const DEFAULT_MIN_ITERATIONS: usize = 16;
 const DEFAULT_TARGET_MS: u64 = 1_000;
 const DEFAULT_CALIBRATION_MS: u64 = 50;
-const DEFAULT_REPEATS: usize = 3;
+const DEFAULT_REPEATS: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct BenchmarkConfig {
@@ -117,10 +117,21 @@ pub struct BenchmarkResult {
     pub indicator: &'static str,
     pub mode: BenchmarkMode,
     pub input_len: usize,
+    pub calibration_runs: usize,
+    pub calibration_ms: f64,
     pub iterations: usize,
     pub total_outputs: usize,
     pub elapsed: Duration,
+    pub sample_min: Duration,
+    pub sample_max: Duration,
     pub ns_per_input: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CalibrationResult {
+    runs: usize,
+    elapsed: Duration,
+    iterations: usize,
 }
 
 pub fn run_registry_benchmarks(
@@ -184,19 +195,23 @@ pub fn write_report(
 pub fn render_markdown(results: &[BenchmarkResult]) -> String {
     let mut out = String::new();
     out.push_str("# Indicator Benchmarks\n\n");
-    out.push_str("| indicator | mode | input_len | iterations | outputs | total_ms | ns/input |\n");
-    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: |\n");
+    out.push_str("| indicator | mode | input_len | calibration_runs | calibration_ms | iterations | outputs | sample_min_ms | sample_median_ms | sample_max_ms | ns/input |\n");
+    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
 
     for result in results {
         let _ = writeln!(
             out,
-            "| {} | {} | {} | {} | {} | {:.3} | {:.2} |",
+            "| {} | {} | {} | {} | {:.3} | {} | {} | {:.3} | {:.3} | {:.3} | {:.2} |",
             result.indicator,
             result.mode.as_str(),
             result.input_len,
+            result.calibration_runs,
+            result.calibration_ms,
             result.iterations,
             result.total_outputs,
+            result.sample_min.as_secs_f64() * 1000.0,
             result.elapsed.as_secs_f64() * 1000.0,
+            result.sample_max.as_secs_f64() * 1000.0,
             result.ns_per_input,
         );
     }
@@ -205,19 +220,24 @@ pub fn render_markdown(results: &[BenchmarkResult]) -> String {
 }
 
 pub fn render_tsv(results: &[BenchmarkResult]) -> String {
-    let mut out =
-        String::from("indicator\tmode\tinput_len\titerations\toutputs\ttotal_ms\tns_per_input\n");
+    let mut out = String::from(
+        "indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tns_per_input\n",
+    );
 
     for result in results {
         let _ = writeln!(
             out,
-            "{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}",
+            "{}\t{}\t{}\t{}\t{:.3}\t{}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.2}",
             result.indicator,
             result.mode.as_str(),
             result.input_len,
+            result.calibration_runs,
+            result.calibration_ms,
             result.iterations,
             result.total_outputs,
+            result.sample_min.as_secs_f64() * 1000.0,
             result.elapsed.as_secs_f64() * 1000.0,
+            result.sample_max.as_secs_f64() * 1000.0,
             result.ns_per_input,
         );
     }
@@ -268,7 +288,7 @@ fn run_batch_benchmark(
             });
         }
     }
-    let iterations = calibrate_iterations(config, |runs| {
+    let calibration = calibrate_iterations(config, |runs| {
         for _ in 0..runs {
             let mut outputs: Vec<&mut [Real]> =
                 output_buffers.iter_mut().map(Vec::as_mut_slice).collect();
@@ -285,6 +305,7 @@ fn run_batch_benchmark(
         }
         Ok(())
     })?;
+    let iterations = calibration.iterations;
 
     let mut samples = Vec::with_capacity(config.repeats);
     for _ in 0..config.repeats {
@@ -305,15 +326,21 @@ fn run_batch_benchmark(
         }
         samples.push(start.elapsed());
     }
-    let elapsed = median_duration(samples);
+    let elapsed = median_duration(samples.clone());
+    let sample_min = samples.iter().copied().min().unwrap_or(elapsed);
+    let sample_max = samples.iter().copied().max().unwrap_or(elapsed);
 
     Ok(BenchmarkResult {
         indicator: metadata.name,
         mode: BenchmarkMode::Batch,
         input_len: scenario.inputs[0].len(),
+        calibration_runs: calibration.runs,
+        calibration_ms: calibration.elapsed.as_secs_f64() * 1000.0,
         iterations,
         total_outputs,
         elapsed,
+        sample_min,
+        sample_max,
         ns_per_input: elapsed.as_secs_f64() * 1_000_000_000.0
             / (scenario.inputs[0].len() * iterations) as f64,
     })
@@ -333,7 +360,7 @@ fn run_stream_benchmark(
         &scenario.inputs,
         config.stream_chunk_size,
     )?;
-    let iterations = calibrate_iterations(config, |runs| {
+    let calibration = calibrate_iterations(config, |runs| {
         for _ in 0..runs {
             let mut stream = scenario.indicator.create_stream(&scenario.options)?.ok_or(
                 IndicatorError::MissingStreamSupport {
@@ -349,6 +376,7 @@ fn run_stream_benchmark(
         }
         Ok(())
     })?;
+    let iterations = calibration.iterations;
 
     let mut samples = Vec::with_capacity(config.repeats);
     for _ in 0..config.repeats {
@@ -368,15 +396,21 @@ fn run_stream_benchmark(
         }
         samples.push(start.elapsed());
     }
-    let elapsed = median_duration(samples);
+    let elapsed = median_duration(samples.clone());
+    let sample_min = samples.iter().copied().min().unwrap_or(elapsed);
+    let sample_max = samples.iter().copied().max().unwrap_or(elapsed);
 
     Ok(BenchmarkResult {
         indicator: scenario.indicator.metadata().name,
         mode: BenchmarkMode::Stream,
         input_len: scenario.inputs[0].len(),
+        calibration_runs: calibration.runs,
+        calibration_ms: calibration.elapsed.as_secs_f64() * 1000.0,
         iterations,
         total_outputs,
         elapsed,
+        sample_min,
+        sample_max,
         ns_per_input: elapsed.as_secs_f64() * 1_000_000_000.0
             / (scenario.inputs[0].len() * iterations) as f64,
     })
@@ -412,7 +446,10 @@ fn collect_stream_outputs(
     Ok(total_outputs)
 }
 
-fn calibrate_iterations<F>(config: &BenchmarkConfig, mut run: F) -> Result<usize, IndicatorError>
+fn calibrate_iterations<F>(
+    config: &BenchmarkConfig,
+    mut run: F,
+) -> Result<CalibrationResult, IndicatorError>
 where
     F: FnMut(usize) -> Result<(), IndicatorError>,
 {
@@ -432,7 +469,11 @@ where
     let elapsed_ns = elapsed.as_nanos().max(1);
     let target_ns = config.target_duration.as_nanos();
     let estimated = target_ns.saturating_mul(runs as u128).div_ceil(elapsed_ns) as usize;
-    Ok(estimated.max(config.min_iterations))
+    Ok(CalibrationResult {
+        runs,
+        elapsed,
+        iterations: estimated.max(config.min_iterations),
+    })
 }
 
 fn median_duration(mut samples: Vec<Duration>) -> Duration {

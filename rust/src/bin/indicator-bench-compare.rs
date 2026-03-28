@@ -14,9 +14,13 @@ struct ExternalBenchmarkRow {
     indicator: String,
     mode: String,
     input_len: usize,
+    calibration_runs: usize,
+    calibration_ms: f64,
     iterations: usize,
     outputs: usize,
+    sample_min_ms: f64,
     total_ms: f64,
+    sample_max_ms: f64,
     ns_per_input: f64,
 }
 
@@ -25,8 +29,18 @@ struct CompareRow {
     indicator: String,
     mode: String,
     input_len: usize,
+    c_calibration_runs: usize,
+    rust_calibration_runs: usize,
+    c_calibration_ms: f64,
+    rust_calibration_ms: f64,
     c_ns_per_input: f64,
     rust_ns_per_input: f64,
+    c_sample_min_ms: f64,
+    c_sample_median_ms: f64,
+    c_sample_max_ms: f64,
+    rust_sample_min_ms: f64,
+    rust_sample_median_ms: f64,
+    rust_sample_max_ms: f64,
     ratio: f64,
     status: &'static str,
 }
@@ -126,6 +140,10 @@ fn run_c_benchmark(config: &BenchmarkConfig) -> Result<Vec<ExternalBenchmarkRow>
         )
         .env("TI_BENCH_MIN_ITERATIONS", config.min_iterations.to_string())
         .env(
+            "TI_BENCH_CALIBRATION_MS",
+            config.calibration_duration.as_millis().to_string(),
+        )
+        .env(
             "TI_BENCH_TARGET_MS",
             config.target_duration.as_millis().to_string(),
         )
@@ -158,7 +176,7 @@ fn parse_external_tsv(raw: &str) -> Result<Vec<ExternalBenchmarkRow>, String> {
             continue;
         }
         let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() != 7 {
+        if parts.len() != 11 {
             return Err(format!("invalid benchmark TSV row: {line}"));
         }
         rows.push(ExternalBenchmarkRow {
@@ -167,16 +185,28 @@ fn parse_external_tsv(raw: &str) -> Result<Vec<ExternalBenchmarkRow>, String> {
             input_len: parts[2]
                 .parse()
                 .map_err(|_| format!("invalid input_len in row: {line}"))?,
-            iterations: parts[3]
+            calibration_runs: parts[3]
+                .parse()
+                .map_err(|_| format!("invalid calibration_runs in row: {line}"))?,
+            calibration_ms: parts[4]
+                .parse()
+                .map_err(|_| format!("invalid calibration_ms in row: {line}"))?,
+            iterations: parts[5]
                 .parse()
                 .map_err(|_| format!("invalid iterations in row: {line}"))?,
-            outputs: parts[4]
+            outputs: parts[6]
                 .parse()
                 .map_err(|_| format!("invalid outputs in row: {line}"))?,
-            total_ms: parts[5]
+            sample_min_ms: parts[7]
                 .parse()
-                .map_err(|_| format!("invalid total_ms in row: {line}"))?,
-            ns_per_input: parts[6]
+                .map_err(|_| format!("invalid sample_min_ms in row: {line}"))?,
+            total_ms: parts[8]
+                .parse()
+                .map_err(|_| format!("invalid sample_median_ms in row: {line}"))?,
+            sample_max_ms: parts[9]
+                .parse()
+                .map_err(|_| format!("invalid sample_max_ms in row: {line}"))?,
+            ns_per_input: parts[10]
                 .parse()
                 .map_err(|_| format!("invalid ns_per_input in row: {line}"))?,
         });
@@ -230,8 +260,18 @@ fn compare_rows(
             indicator: c_row.indicator.clone(),
             mode: c_row.mode.clone(),
             input_len: c_row.input_len,
+            c_calibration_runs: c_row.calibration_runs,
+            rust_calibration_runs: rust_row.calibration_runs,
+            c_calibration_ms: c_row.calibration_ms,
+            rust_calibration_ms: rust_row.calibration_ms,
             c_ns_per_input: c_row.ns_per_input,
             rust_ns_per_input: rust_row.ns_per_input,
+            c_sample_min_ms: c_row.sample_min_ms,
+            c_sample_median_ms: c_row.total_ms,
+            c_sample_max_ms: c_row.sample_max_ms,
+            rust_sample_min_ms: rust_row.sample_min.as_secs_f64() * 1000.0,
+            rust_sample_median_ms: rust_row.elapsed.as_secs_f64() * 1000.0,
+            rust_sample_max_ms: rust_row.sample_max.as_secs_f64() * 1000.0,
             ratio,
             status,
         });
@@ -241,17 +281,22 @@ fn compare_rows(
 }
 
 fn render_external_tsv(rows: &[ExternalBenchmarkRow]) -> String {
-    let mut out =
-        String::from("indicator\tmode\tinput_len\titerations\toutputs\ttotal_ms\tns_per_input\n");
+    let mut out = String::from(
+        "indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tns_per_input\n",
+    );
     for row in rows {
         out.push_str(&format!(
-            "{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.2}\n",
+            "{}\t{}\t{}\t{}\t{:.3}\t{}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.2}\n",
             row.indicator,
             row.mode,
             row.input_len,
+            row.calibration_runs,
+            row.calibration_ms,
             row.iterations,
             row.outputs,
+            row.sample_min_ms,
             row.total_ms,
+            row.sample_max_ms,
             row.ns_per_input
         ));
     }
@@ -260,14 +305,24 @@ fn render_external_tsv(rows: &[ExternalBenchmarkRow]) -> String {
 
 fn render_compare_tsv(rows: &[CompareRow]) -> String {
     let mut out = String::from(
-        "indicator\tmode\tinput_len\tc_ns_per_input\trust_ns_per_input\tratio\tstatus\n",
+        "indicator\tmode\tinput_len\tc_calibration_runs\trust_calibration_runs\tc_calibration_ms\trust_calibration_ms\tc_sample_min_ms\tc_sample_median_ms\tc_sample_max_ms\trust_sample_min_ms\trust_sample_median_ms\trust_sample_max_ms\tc_ns_per_input\trust_ns_per_input\tratio\tstatus\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{}\t{}\t{}\t{:.2}\t{:.2}\t{:.3}\t{}\n",
+            "{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.2}\t{:.2}\t{:.3}\t{}\n",
             row.indicator,
             row.mode,
             row.input_len,
+            row.c_calibration_runs,
+            row.rust_calibration_runs,
+            row.c_calibration_ms,
+            row.rust_calibration_ms,
+            row.c_sample_min_ms,
+            row.c_sample_median_ms,
+            row.c_sample_max_ms,
+            row.rust_sample_min_ms,
+            row.rust_sample_median_ms,
+            row.rust_sample_max_ms,
             row.c_ns_per_input,
             row.rust_ns_per_input,
             row.ratio,
@@ -285,18 +340,24 @@ fn render_compare_markdown(rows: &[CompareRow], regression_warn: f64) -> String 
         regression_warn
     ));
     out.push_str(
-        "| indicator | mode | input_len | c ns/input | rust ns/input | ratio | status |\n",
+        "| indicator | mode | input_len | c ns/input | rust ns/input | ratio | c sample ms (min/med/max) | rust sample ms (min/med/max) | status |\n",
     );
-    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | --- |\n");
+    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |\n");
     for row in rows {
         out.push_str(&format!(
-            "| {} | {} | {} | {:.2} | {:.2} | {:.3} | {} |\n",
+            "| {} | {} | {} | {:.2} | {:.2} | {:.3} | {:.3}/{:.3}/{:.3} | {:.3}/{:.3}/{:.3} | {} |\n",
             row.indicator,
             row.mode,
             row.input_len,
             row.c_ns_per_input,
             row.rust_ns_per_input,
             row.ratio,
+            row.c_sample_min_ms,
+            row.c_sample_median_ms,
+            row.c_sample_max_ms,
+            row.rust_sample_min_ms,
+            row.rust_sample_median_ms,
+            row.rust_sample_max_ms,
             row.status
         ));
     }
