@@ -575,8 +575,32 @@ impl Indicator for Wad {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = WadStream::new(options)?;
-        stream.feed(inputs)
+        expect_option_count(WAD_METADATA.name, options, 0)?;
+        let (high, low, close) = triple_input(WAD_METADATA.name, inputs)?;
+        let output_len = high.len().saturating_sub(1);
+        let mut output = vec![0.0; output_len];
+        let produced = run_wad_batch(high, low, close, &mut output);
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(WAD_METADATA.name, options, 0)?;
+        let (high, low, close) = triple_input(WAD_METADATA.name, inputs)?;
+        let output_len = high.len().saturating_sub(1);
+        validate_output_slices(&WAD_METADATA, outputs, 1)?;
+        ensure_output_len(&WAD_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_wad_batch(
+            high,
+            low,
+            close,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -1047,6 +1071,29 @@ impl IndicatorStream for WadStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_wad_batch(high: &[Real], low: &[Real], close: &[Real], output: &mut [Real]) -> usize {
+    if close.len() <= 1 {
+        return 0;
+    }
+
+    let mut sum = 0.0;
+    let mut previous_close = close[0];
+    for (dst, ((&high, &low), &close)) in output
+        .iter_mut()
+        .zip(high.iter().zip(low.iter()).zip(close.iter()).skip(1))
+    {
+        if close > previous_close {
+            sum += close - previous_close.min(low);
+        } else if close < previous_close {
+            sum += close - previous_close.max(high);
+        }
+        *dst = sum;
+        previous_close = close;
+    }
+
+    output.len()
 }
 
 fn parse_short_long(

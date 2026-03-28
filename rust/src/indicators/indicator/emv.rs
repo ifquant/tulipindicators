@@ -1,7 +1,9 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
-use crate::core::validation::triple_input;
+use crate::core::validation::{expect_option_count, triple_input};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "emv",
@@ -25,8 +27,32 @@ impl Indicator for Emv {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = EmvStream::new(options)?;
-        stream.feed(inputs)
+        expect_option_count(METADATA.name, options, 0)?;
+        let (high, low, volume) = triple_input(METADATA.name, inputs)?;
+        let output_len = high.len().saturating_sub(1);
+        let mut output = vec![0.0; output_len];
+        let produced = run_emv_batch(high, low, volume, &mut output);
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(METADATA.name, options, 0)?;
+        let (high, low, volume) = triple_input(METADATA.name, inputs)?;
+        let output_len = high.len().saturating_sub(1);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_emv_batch(
+            high,
+            low,
+            volume,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -84,4 +110,23 @@ impl IndicatorStream for EmvStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_emv_batch(high: &[Real], low: &[Real], volume: &[Real], output: &mut [Real]) -> usize {
+    if high.len() <= 1 {
+        return 0;
+    }
+
+    let mut last_midpoint = 0.5 * (high[0] + low[0]);
+    for (dst, ((&high, &low), &volume)) in output
+        .iter_mut()
+        .zip(high.iter().zip(low.iter()).zip(volume.iter()).skip(1))
+    {
+        let midpoint = 0.5 * (high + low);
+        let box_ratio = volume / 10_000.0 / (high - low);
+        *dst = (midpoint - last_midpoint) / box_ratio;
+        last_midpoint = midpoint;
+    }
+
+    output.len()
 }
