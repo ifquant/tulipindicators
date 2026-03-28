@@ -7,8 +7,8 @@ use crate::indicators::indicator::{
     UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
 };
 use crate::indicators::math::{
-    CrossAny, Crossover, Decay, EDecay, Lag, Max, MaxIndex, MidPoint, Min, MinIndex, MinMax,
-    MinMaxIndex, Sum,
+    Beta, Correl, CrossAny, Crossover, Decay, EDecay, Lag, Max, MaxIndex, MidPoint, Min, MinIndex,
+    MinMax, MinMaxIndex, Sum,
 };
 use crate::indicators::overlay::{
     Abands, Alma, AvgPrice, Bbands, Ce, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, Mama, MedPrice,
@@ -38,6 +38,7 @@ pub static ATR: Atr = Atr;
 pub static ATAN: Atan = Atan;
 pub static AVGPRICE: AvgPrice = AvgPrice;
 pub static BBANDS: Bbands = Bbands;
+pub static BETA: Beta = Beta;
 pub static BOP: Bop = Bop;
 pub static CE: Ce = Ce;
 pub static CCI: Cci = Cci;
@@ -47,6 +48,7 @@ pub static CMO: Cmo = Cmo;
 pub static COPP: Copp = Copp;
 pub static COS: Cos = Cos;
 pub static COSH: Cosh = Cosh;
+pub static CORREL: Correl = Correl;
 pub static CROSSANY: CrossAny = CrossAny;
 pub static CROSSOVER: Crossover = Crossover;
 pub static CVI: Cvi = Cvi;
@@ -154,7 +156,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 133] {
+pub fn all() -> [&'static dyn Indicator; 135] {
     [
         &ABS,
         &ACOS,
@@ -174,6 +176,7 @@ pub fn all() -> [&'static dyn Indicator; 133] {
         &ATAN,
         &AVGPRICE,
         &BBANDS,
+        &BETA,
         &BOP,
         &CE,
         &CCI,
@@ -183,6 +186,7 @@ pub fn all() -> [&'static dyn Indicator; 133] {
         &COPP,
         &COS,
         &COSH,
+        &CORREL,
         &CROSSANY,
         &CROSSOVER,
         &CVI,
@@ -312,6 +316,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "atan" => Some(&ATAN),
         "avgprice" => Some(&AVGPRICE),
         "bbands" => Some(&BBANDS),
+        "beta" => Some(&BETA),
         "bop" => Some(&BOP),
         "ce" => Some(&CE),
         "cci" => Some(&CCI),
@@ -321,6 +326,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "copp" => Some(&COPP),
         "cos" => Some(&COS),
         "cosh" => Some(&COSH),
+        "correl" => Some(&CORREL),
         "crossany" => Some(&CROSSANY),
         "crossover" => Some(&CROSSOVER),
         "cvi" => Some(&CVI),

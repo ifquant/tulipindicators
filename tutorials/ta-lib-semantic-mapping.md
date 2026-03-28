@@ -50,8 +50,6 @@
 - `minindex`
 - `minmax`
 - `minmaxindex`
-- `beta`
-- `correl`
 - `ma`
 - `mavp`
 - `macdext`
@@ -87,3 +85,15 @@
 - 和现有 `max` / `min` / `midpoint` 共用同一类滑窗极值语义
 - 比 `beta` / `correl` 更容易先接进 Tulip 现有 math 指标体系
 - 可以同时补齐 C、Rust、parity 和 benchmark，而不用先引入新的统计类型系统
+
+## 第三批实现
+
+第三批补的是双输入统计窗口家族：
+
+- `beta`
+- `correl`
+
+这一批的特点是：
+- 都是固定窗口上的双输入统计量，不需要引入 TA-Lib 风格的可变 MA 类型系统
+- 可以直接沿用 Tulip 现有 `period` lookback 和 batch/in-place 风格
+- 但 `beta` 的语义必须按 TA-Lib 源码而不是按注释想当然地实现：它实际输出的是“第二路收益率对第一路收益率”的回归斜率

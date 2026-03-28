@@ -14,6 +14,8 @@ const INDICATORS: &[&str] = &[
     "minindex",
     "minmax",
     "minmaxindex",
+    "beta",
+    "correl",
 ];
 
 #[test]

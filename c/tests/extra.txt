@@ -82,6 +82,11 @@ ceil
 {0,.5,1}
 {0,1,1}
 
+beta 3
+{100,110,132,171.6,240.24}
+{100,120,168,268.8,483.84}
+{2,2}
+
 cmf 21
 # Data: AAPL
 # Baseline: naive implementation in Python https://github.com/bukosabino/ta/blob/master/ta/volume.py#L100
@@ -104,6 +109,11 @@ cos
 cosh
 {0,.5,1}
 {1,1.128,1.543}
+
+correl 3
+{1,2,3,4,5}
+{2,4,6,8,10}
+{1,1,1}
 
 crossany
 {4,4,6,6,6,4,4,6,5,5,5}

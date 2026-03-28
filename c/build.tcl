@@ -140,6 +140,8 @@ lappend indicators [list indicator "Rate of Change Ratio" rocr 1 1 1 {real} {per
 lappend indicators [list indicator "Rate of Change Ratio 100 Scale" rocr100 1 1 1 {real} {period} {rocr100}]
 
 #Math functions
+lappend indicators [list math "Beta" beta 2 1 1 {real real} {period} {beta}]
+lappend indicators [list math "Pearson Correlation Coefficient" correl 2 1 1 {real real} {period} {correl}]
 lappend indicators [list math "Lag" lag 1 1 1 {real} {period} {lag}]
 lappend indicators [list math "Maximum In Period" max 1 1 1 {real} {period} {max} {ref}]
 lappend indicators [list math "Maximum Index In Period" maxindex 1 1 1 {real} {period} {maxindex}]

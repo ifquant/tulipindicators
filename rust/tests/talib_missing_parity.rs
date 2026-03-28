@@ -57,6 +57,24 @@ fn first_missing_batch_matches_c_and_expected_values() {
         &[vec![1.0, 5.0, 7.0, 9.0, 2.0, 3.0, 4.0]],
         &[vec![0.0, 1.0, 4.0, 4.0, 4.0], vec![2.0, 3.0, 3.0, 3.0, 6.0]],
     );
+    assert_case(
+        "beta",
+        &[3.0],
+        &[
+            vec![100.0, 110.0, 132.0, 171.6, 240.24],
+            vec![100.0, 120.0, 168.0, 268.8, 483.84],
+        ],
+        &[vec![2.0, 2.0]],
+    );
+    assert_case(
+        "correl",
+        &[3.0],
+        &[
+            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+            vec![2.0, 4.0, 6.0, 8.0, 10.0],
+        ],
+        &[vec![1.0, 1.0, 1.0]],
+    );
 }
 
 fn assert_case(name: &str, options: &[Real], inputs: &[Vec<Real>], expected: &[Vec<Real>]) {
