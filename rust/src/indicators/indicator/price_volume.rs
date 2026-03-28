@@ -306,21 +306,9 @@ impl Indicator for Nvi {
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         expect_option_count(NVI_METADATA.name, options, 0)?;
         let (close, volume) = double_input(NVI_METADATA.name, inputs)?;
-        let mut output = Vec::with_capacity(close.len());
-        let mut nvi = 1000.0;
-
-        if close.is_empty() {
-            return Ok(vec![output]);
-        }
-
-        output.push(nvi);
-        for index in 1..close.len() {
-            if volume[index] < volume[index - 1] {
-                nvi += ((close[index] - close[index - 1]) / close[index - 1]) * nvi;
-            }
-            output.push(nvi);
-        }
-
+        let mut output = vec![0.0; close.len()];
+        let produced = run_nvi_batch(close, volume, &mut output);
+        debug_assert_eq!(produced, close.len());
         Ok(vec![output])
     }
 
@@ -334,21 +322,7 @@ impl Indicator for Nvi {
         let (close, volume) = double_input(NVI_METADATA.name, inputs)?;
         validate_output_slices(&NVI_METADATA, outputs, 1)?;
         ensure_output_len(&NVI_METADATA, outputs[0].len(), close.len(), 0)?;
-
-        if close.is_empty() {
-            return Ok(0);
-        }
-
-        let mut nvi = 1000.0;
-        outputs[0][0] = nvi;
-        for index in 1..close.len() {
-            if volume[index] < volume[index - 1] {
-                nvi += ((close[index] - close[index - 1]) / close[index - 1]) * nvi;
-            }
-            outputs[0][index] = nvi;
-        }
-
-        Ok(close.len())
+        Ok(run_nvi_batch(close, volume, outputs[0]))
     }
 
     fn create_stream(
@@ -357,6 +331,36 @@ impl Indicator for Nvi {
     ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
         Ok(Some(Box::new(NviStream::new(options)?)))
     }
+}
+
+fn run_nvi_batch(close: &[Real], volume: &[Real], output: &mut [Real]) -> usize {
+    let Some((&first_close, rest_close)) = close.split_first() else {
+        return 0;
+    };
+
+    let (_, rest_volume) = volume
+        .split_first()
+        .expect("nvi volume input should match close length");
+
+    let mut nvi = 1000.0;
+    output[0] = nvi;
+    let mut prev_close = first_close;
+    let mut prev_volume = volume[0];
+
+    for ((dst, &current_close), &current_volume) in output[1..]
+        .iter_mut()
+        .zip(rest_close.iter())
+        .zip(rest_volume.iter())
+    {
+        if current_volume < prev_volume {
+            nvi += ((current_close - prev_close) / prev_close) * nvi;
+        }
+        *dst = nvi;
+        prev_close = current_close;
+        prev_volume = current_volume;
+    }
+
+    close.len()
 }
 
 impl Indicator for Obv {
