@@ -50,6 +50,26 @@ pub trait IndicatorStream {
     fn metadata(&self) -> &'static IndicatorMetadata;
     fn progress(&self) -> usize;
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError>;
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let metadata = self.metadata();
+        let computed = self.feed(inputs)?;
+        validate_output_slices(metadata, outputs, metadata.output_names.len())?;
+        validate_computed_outputs(metadata, &computed)?;
+        for (output_index, values) in computed.iter().enumerate() {
+            ensure_output_len(
+                metadata,
+                outputs[output_index].len(),
+                values.len(),
+                output_index,
+            )?;
+            outputs[output_index][..values.len()].copy_from_slice(values);
+        }
+        Ok(computed.first().map_or(0, Vec::len))
+    }
 }
 
 pub fn output_len_for_input(input_len: usize, lookback: usize) -> usize {

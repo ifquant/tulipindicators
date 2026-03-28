@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 
@@ -111,6 +113,50 @@ impl IndicatorStream for SmaStream {
         }
 
         Ok(vec![output])
+    }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
+
+        let mut out_index = 0usize;
+        let buffer = &mut self.buffer;
+        let period = self.period;
+        let scale = self.scale;
+        let mut sum = self.sum;
+        let mut cursor = self.cursor;
+
+        for &sample in input {
+            if buffer.len() < period {
+                buffer.push(sample);
+                sum += sample;
+                if buffer.len() == period {
+                    outputs[0][out_index] = sum * scale;
+                    out_index += 1;
+                }
+            } else {
+                sum -= buffer[cursor];
+                buffer[cursor] = sample;
+                sum += sample;
+                cursor += 1;
+                if cursor == period {
+                    cursor = 0;
+                }
+                outputs[0][out_index] = sum * scale;
+                out_index += 1;
+            }
+
+            self.progress += 1;
+        }
+
+        self.sum = sum;
+        self.cursor = cursor;
+        Ok(out_index)
     }
 }
 

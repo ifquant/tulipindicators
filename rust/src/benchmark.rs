@@ -280,12 +280,11 @@ fn run_stream_benchmark(
     scenario: &BenchmarkScenario<'_>,
     config: &BenchmarkConfig,
 ) -> Result<BenchmarkResult, IndicatorError> {
-    let mut sample_stream = scenario
-        .indicator
-        .create_stream(&scenario.options)?
-        .ok_or(IndicatorError::MissingStreamSupport {
+    let mut sample_stream = scenario.indicator.create_stream(&scenario.options)?.ok_or(
+        IndicatorError::MissingStreamSupport {
             indicator: scenario.indicator.metadata().name,
-        })?;
+        },
+    )?;
     let total_outputs = collect_stream_outputs(
         sample_stream.as_mut(),
         &scenario.inputs,
@@ -295,12 +294,11 @@ fn run_stream_benchmark(
 
     let start = Instant::now();
     for _ in 0..iterations {
-        let mut stream = scenario
-            .indicator
-            .create_stream(&scenario.options)?
-            .ok_or(IndicatorError::MissingStreamSupport {
+        let mut stream = scenario.indicator.create_stream(&scenario.options)?.ok_or(
+            IndicatorError::MissingStreamSupport {
                 indicator: scenario.indicator.metadata().name,
-            })?;
+            },
+        )?;
         let outputs =
             collect_stream_outputs(stream.as_mut(), &scenario.inputs, config.stream_chunk_size)?;
         black_box(outputs);
@@ -327,12 +325,19 @@ fn collect_stream_outputs(
     let mut total_outputs = 0;
     let mut start = 0;
     let input_len = inputs.first().map_or(0, Vec::len);
+    let output_count = stream.metadata().output_names.len();
+    let mut output_buffers = vec![vec![0.0; chunk_size]; output_count];
 
     while start < input_len {
         let end = (start + chunk_size).min(input_len);
         let chunk_inputs: Vec<&[Real]> = inputs.iter().map(|series| &series[start..end]).collect();
-        let chunk_outputs = stream.feed(&chunk_inputs)?;
-        total_outputs += chunk_outputs.iter().map(Vec::len).sum::<usize>();
+        let current_chunk_len = end - start;
+        let mut outputs: Vec<&mut [Real]> = output_buffers
+            .iter_mut()
+            .map(|buffer| &mut buffer[..current_chunk_len])
+            .collect();
+        let produced = stream.feed_in_place(&chunk_inputs, &mut outputs)?;
+        total_outputs += produced * output_count;
         start = end;
     }
 
