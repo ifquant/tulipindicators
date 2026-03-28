@@ -14,16 +14,19 @@
 - 根目录 [`/Users/dev/workspace2/hc_apps/AGENTS.md`](/Users/dev/workspace2/hc_apps/AGENTS.md) 中的通用提交纪律继续生效；本文件只补充 `tulipindicators` 特有规则。
 
 ## 目录导航
-- `indicators/`：稳定指标实现
-- `beta/`：实验性或候选指标实现，不默认视为稳定 API 承诺
-- `utils/`：运行时与测试辅助代码
-- `tests/`：文本 golden 数据与测试输入
+- `c/`：ANSI C 实现目录，包含稳定指标、beta 指标、构建脚本、生成模板、示例程序、测试程序和单文件产物
+- `c/indicators/`：稳定 C 指标实现
+- `c/beta/`：实验性或候选 C 指标实现，不默认视为稳定 API 承诺
+- `c/utils/`：C 运行时与测试辅助代码
+- `c/tests/`：C golden 数据与测试输入；Rust golden test 也复用这里的数据
+- `rust/`：Rust 实现目录，包含 crate 源码、benchmark 入口和 Rust 集成测试
+- `rust/src/`：Rust 核心库与指标实现
+- `rust/tests/`：Rust 集成测试
 - `tutorials/commit/`：按提交顺序维护的协作教程，面向新手解释每次提交的背景、目标、关键设计、验证和未覆盖项
-- `templates/`：生成 `indicators.h`、`indicators.c`、`candles.h`、`candles.c` 的模板
-- 根目录源码：`smoke.c`、`cli.c`、`benchmark.c`、`sample.c`、`example1.c`、`example2.c`、`fuzzer.c`
-- 根目录构建与生成入口：`Makefile`、`build.tcl`、`doc.tcl`
+- `c/templates/`：生成 `indicators.h`、`indicators.c`、`candles.h`、`candles.c` 的模板
+- 根目录入口：`Makefile`、`Cargo.toml`、`build.tcl`、`doc.tcl`
 - `plan.md`：Rust 风格重构计划文档，不是实现代码
-- `tiamalgamation.c`：单文件分发产物；修改相关逻辑时要关注兼容性
+- `c/tiamalgamation.c`：单文件分发产物；修改相关逻辑时要关注兼容性
 
 ## 常用命令
 - 安装依赖：无包管理器；要求系统具备 `make`、`gcc`/`clang`、`ar`、`ranlib`、`tclsh`
@@ -34,7 +37,7 @@
 - 集成测试：`make smoke_amal`
 - Rust benchmark：`cargo run --release --bin indicator-bench`
 - 构建：`make`
-- 仅运行某个模块/包：无包级任务系统；按目标运行 `make sample`、`make example1`、`make example2`、`make cli`、`make benchmark`、`make fuzzer`
+- 仅运行某个模块/包：根目录可继续运行 `make sample`、`make example1`、`make example2`、`make cli`、`make benchmark`、`make fuzzer`；C 侧真实实现位于 `c/`，Rust 侧真实实现位于 `rust/`
 - 清理构建产物：`make clean`
 - 清理构建产物与生成文件：`make veryclean`
 
