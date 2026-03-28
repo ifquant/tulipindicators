@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, quadruple_input};
 
@@ -26,8 +28,32 @@ impl Indicator for Kvo {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = KvoStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low, close, volume) = quadruple_input(METADATA.name, inputs)?;
+        let output_len = high.len().saturating_sub(1);
+        let mut output = vec![0.0; output_len];
+        let produced = run_kvo_batch(high, low, close, volume, options, &mut output)?;
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low, close, volume) = quadruple_input(METADATA.name, inputs)?;
+        let output_len = high.len().saturating_sub(1);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        run_kvo_batch(
+            high,
+            low,
+            close,
+            volume,
+            options,
+            &mut outputs[0][..output_len],
+        )
     }
 
     fn create_stream(
@@ -77,9 +103,25 @@ impl IndicatorStream for KvoStream {
     }
 
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let (high, low, close, volume) = quadruple_input(METADATA.name, inputs)?;
-        let mut output = Vec::with_capacity(high.len().saturating_sub(1));
+        let (high, _, _, _) = quadruple_input(METADATA.name, inputs)?;
+        let mut output = vec![0.0; high.len()];
+        let mut outputs = [&mut output[..]];
+        let produced = self.feed_in_place(inputs, &mut outputs)?;
+        output.truncate(produced);
 
+        Ok(vec![output])
+    }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low, close, volume) = quadruple_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), high.len(), 0)?;
+
+        let mut out_index = 0usize;
         for (((&high, &low), &close), &volume) in high
             .iter()
             .zip(low.iter())
@@ -90,12 +132,13 @@ impl IndicatorStream for KvoStream {
             let dm = high - low;
 
             if let Some(previous_hlc) = self.previous_hlc {
+                let previous_dm = self.previous_dm.expect("kvo previous dm should exist");
                 if hlc > previous_hlc && self.trend != 1 {
                     self.trend = 1;
-                    self.cm = self.previous_dm.expect("kvo previous dm should exist");
+                    self.cm = previous_dm;
                 } else if hlc < previous_hlc && self.trend != 0 {
                     self.trend = 0;
-                    self.cm = self.previous_dm.expect("kvo previous dm should exist");
+                    self.cm = previous_dm;
                 }
 
                 self.cm += dm;
@@ -113,7 +156,8 @@ impl IndicatorStream for KvoStream {
                     self.long_ema = (vf - self.long_ema) * self.long_per + self.long_ema;
                 }
 
-                output.push(self.short_ema - self.long_ema);
+                outputs[0][out_index] = self.short_ema - self.long_ema;
+                out_index += 1;
             }
 
             self.previous_hlc = Some(hlc);
@@ -121,7 +165,7 @@ impl IndicatorStream for KvoStream {
             self.progress += 1;
         }
 
-        Ok(vec![output])
+        Ok(out_index)
     }
 }
 
@@ -140,4 +184,62 @@ fn parse_options(options: &[Real]) -> Result<(usize, usize), IndicatorError> {
     }
 
     Ok((short_period, long_period))
+}
+
+fn run_kvo_batch(
+    high: &[Real],
+    low: &[Real],
+    close: &[Real],
+    volume: &[Real],
+    options: &[Real],
+    output: &mut [Real],
+) -> Result<usize, IndicatorError> {
+    let (short_period, long_period) = parse_options(options)?;
+    if high.len() < 2 {
+        return Ok(0);
+    }
+
+    let short_per = 2.0 / (short_period as Real + 1.0);
+    let long_per = 2.0 / (long_period as Real + 1.0);
+
+    let mut cm = 0.0;
+    let mut previous_hlc = high[0] + low[0] + close[0];
+    let mut trend = -1;
+    let mut short_ema = 0.0;
+    let mut long_ema = 0.0;
+    let mut out_index = 0usize;
+
+    for index in 1..high.len() {
+        let hlc = high[index] + low[index] + close[index];
+        let dm = high[index] - low[index];
+
+        if hlc > previous_hlc && trend != 1 {
+            trend = 1;
+            cm = high[index - 1] - low[index - 1];
+        } else if hlc < previous_hlc && trend != 0 {
+            trend = 0;
+            cm = high[index - 1] - low[index - 1];
+        }
+
+        cm += dm;
+
+        let vf = volume[index]
+            * ((dm / cm) * 2.0 - 1.0).abs()
+            * 100.0
+            * if trend != 0 { 1.0 } else { -1.0 };
+
+        if index == 1 {
+            short_ema = vf;
+            long_ema = vf;
+        } else {
+            short_ema = (vf - short_ema) * short_per + short_ema;
+            long_ema = (vf - long_ema) * long_per + long_ema;
+        }
+
+        output[out_index] = short_ema - long_ema;
+        out_index += 1;
+        previous_hlc = hlc;
+    }
+
+    Ok(out_index)
 }
