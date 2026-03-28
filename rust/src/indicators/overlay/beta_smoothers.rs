@@ -5,6 +5,7 @@ use crate::core::validation::{
     double_input, expect_option_count, parse_usize_option, single_input,
 };
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue};
+use std::collections::VecDeque;
 
 const ALMA_METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "alma",
@@ -33,12 +34,23 @@ const RMTA_METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["rmta"],
 };
 
+const MAMA_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "mama",
+    full_name: "MESA Adaptive Moving Average",
+    category: IndicatorCategory::Overlay,
+    input_names: &["real"],
+    option_names: &["fastlimit", "slowlimit"],
+    output_names: &["mama", "fama"],
+};
+
 #[derive(Debug, Clone, Copy)]
 pub struct Alma;
 #[derive(Debug, Clone, Copy)]
 pub struct Ikhts;
 #[derive(Debug, Clone, Copy)]
 pub struct Rmta;
+#[derive(Debug, Clone, Copy)]
+pub struct Mama;
 
 impl Indicator for Alma {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -121,6 +133,28 @@ impl Indicator for Rmta {
     }
 }
 
+impl Indicator for Mama {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MAMA_METADATA
+    }
+
+    fn lookback(&self, _options: &[Real]) -> Result<usize, IndicatorError> {
+        Ok(6)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let mut stream = MamaStream::new(options)?;
+        stream.feed(inputs)
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        Ok(Some(Box::new(MamaStream::new(options)?)))
+    }
+}
+
 struct IkhtsStream {
     period: usize,
     progress: usize,
@@ -176,6 +210,191 @@ struct RmtaStream {
     progress: usize,
     b: Option<Real>,
     rmta: Option<Real>,
+}
+
+struct MamaStream {
+    progress: usize,
+    fastlimit: Real,
+    slowlimit: Real,
+    price: SmallHistory,
+    smooth: SmallHistory,
+    detrender: SmallHistory,
+    i1: SmallHistory,
+    q1: SmallHistory,
+    ji: SmallHistory,
+    jq: SmallHistory,
+    i2: SmallHistory,
+    q2: SmallHistory,
+    re: SmallHistory,
+    im: SmallHistory,
+    period: SmallHistory,
+    smoothperiod: SmallHistory,
+    phase: SmallHistory,
+    deltaphase: SmallHistory,
+    alpha: SmallHistory,
+    mama: SmallHistory,
+    fama: SmallHistory,
+}
+
+impl MamaStream {
+    fn new(options: &[Real]) -> Result<Self, IndicatorError> {
+        let (fastlimit, slowlimit) = parse_mama_options(options)?;
+        Ok(Self {
+            progress: 0,
+            fastlimit,
+            slowlimit,
+            price: SmallHistory::new(4),
+            smooth: SmallHistory::new(7),
+            detrender: SmallHistory::new(7),
+            i1: SmallHistory::new(7),
+            q1: SmallHistory::new(7),
+            ji: SmallHistory::new(1),
+            jq: SmallHistory::new(1),
+            i2: SmallHistory::new(2),
+            q2: SmallHistory::new(2),
+            re: SmallHistory::new(2),
+            im: SmallHistory::new(2),
+            period: SmallHistory::new(2),
+            smoothperiod: SmallHistory::new(2),
+            phase: SmallHistory::new(2),
+            deltaphase: SmallHistory::new(1),
+            alpha: SmallHistory::new(1),
+            mama: SmallHistory::new(1),
+            fama: SmallHistory::new(1),
+        })
+    }
+
+    fn seed_zero_state(&mut self, price: Real) {
+        self.price.push(price);
+        self.smooth.push(0.0);
+        self.detrender.push(0.0);
+        self.i1.push(0.0);
+        self.q1.push(0.0);
+        self.ji.push(0.0);
+        self.jq.push(0.0);
+        self.i2.push(0.0);
+        self.q2.push(0.0);
+        self.re.push(0.0);
+        self.im.push(0.0);
+        self.period.push(0.0);
+        self.smoothperiod.push(0.0);
+        self.phase.push(0.0);
+        self.deltaphase.push(0.0);
+        self.alpha.push(0.0);
+        self.mama.push(0.0);
+        self.fama.push(0.0);
+    }
+}
+
+impl IndicatorStream for MamaStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MAMA_METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.progress
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MAMA_METADATA.name, inputs)?;
+        let mut mama_output = Vec::new();
+        let mut fama_output = Vec::new();
+
+        for &sample in input {
+            if self.progress < 6 {
+                self.seed_zero_state(sample);
+                self.progress += 1;
+                continue;
+            }
+
+            self.price.push(sample);
+
+            let smooth = (4.0 * self.price.current()
+                + 3.0 * self.price.prev(1)
+                + 2.0 * self.price.prev(2)
+                + self.price.prev(3))
+                / 10.0;
+            self.smooth.push(smooth);
+
+            let detrender = hilbert_transform(&self.smooth, self.period.current());
+            self.detrender.push(detrender);
+
+            let q1 = hilbert_transform(&self.detrender, self.period.current());
+            self.q1.push(q1);
+
+            let i1 = self.detrender.prev(3);
+            self.i1.push(i1);
+
+            let ji = hilbert_transform(&self.i1, self.period.current());
+            self.ji.push(ji);
+
+            let jq = hilbert_transform(&self.q1, self.period.current());
+            self.jq.push(jq);
+
+            let i2 = 0.2 * (self.i1.current() - self.jq.current()) + 0.8 * self.i2.current();
+            self.i2.push(i2);
+
+            let q2 = 0.2 * (self.q1.current() + self.ji.current()) + 0.8 * self.q2.current();
+            self.q2.push(q2);
+
+            let re = 0.2
+                * (self.i2.current() * self.i2.prev(1) + self.q2.current() * self.q2.prev(1))
+                + 0.8 * self.re.current();
+            self.re.push(re);
+
+            let im = 0.2
+                * (self.i2.current() * self.q2.prev(1) - self.q2.current() * self.i2.prev(1))
+                + 0.8 * self.im.current();
+            self.im.push(im);
+
+            let previous_period = self.period.current();
+            let mut period_value = 0.0;
+            if self.im.current() != 0.0 && self.re.current() != 0.0 {
+                period_value = 360.0 / (self.im.current() / self.re.current()).atan();
+            }
+            if period_value > 1.5 * previous_period {
+                period_value = 1.5 * previous_period;
+            }
+            if period_value < 0.67 * previous_period {
+                period_value = 0.67 * previous_period;
+            }
+            period_value = period_value.clamp(6.0, 50.0);
+            period_value = 0.2 * period_value + 0.8 * previous_period;
+            self.period.push(period_value);
+
+            let smoothperiod = 0.33 * self.period.current() + 0.67 * self.smoothperiod.current();
+            self.smoothperiod.push(smoothperiod);
+
+            let phase = if self.i1.current() != 0.0 {
+                (self.q1.current() / self.i1.current()).atan()
+            } else {
+                0.0
+            };
+            self.phase.push(phase);
+
+            let deltaphase = (self.phase.prev(1) - self.phase.current()).max(1.0);
+            self.deltaphase.push(deltaphase);
+
+            let alpha = self
+                .slowlimit
+                .max(self.fastlimit / self.deltaphase.current());
+            self.alpha.push(alpha);
+
+            let mama = self.alpha.current() * self.price.current()
+                + (1.0 - self.alpha.current()) * self.mama.current();
+            self.mama.push(mama);
+
+            let fama = 0.5 * self.alpha.current() * self.mama.current()
+                + (1.0 - 0.5 * self.alpha.current()) * self.fama.current();
+            self.fama.push(fama);
+
+            mama_output.push(self.mama.current());
+            fama_output.push(self.fama.current());
+            self.progress += 1;
+        }
+
+        Ok(vec![mama_output, fama_output])
+    }
 }
 
 impl RmtaStream {
@@ -296,4 +515,68 @@ fn parse_rmta_options(options: &[Real]) -> Result<(usize, Real), IndicatorError>
         });
     }
     Ok((period, beta))
+}
+
+fn parse_mama_options(options: &[Real]) -> Result<(Real, Real), IndicatorError> {
+    expect_option_count(MAMA_METADATA.name, options, 2)?;
+    let fastlimit = options[0];
+    let slowlimit = options[1];
+
+    for (name, value) in [("fastlimit", fastlimit), ("slowlimit", slowlimit)] {
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+            return Err(IndicatorError::InvalidOption {
+                indicator: MAMA_METADATA.name,
+                option: name,
+                value,
+                reason: "expected a finite value between 0 and 1",
+            });
+        }
+    }
+
+    Ok((fastlimit, slowlimit))
+}
+
+fn hilbert_transform(history: &SmallHistory, period: Real) -> Real {
+    (0.0962 * history.current() + 0.5769 * history.prev(2)
+        - 0.5769 * history.prev(4)
+        - 0.0962 * history.prev(6))
+        * (0.075 * period + 0.54)
+}
+
+#[derive(Debug, Clone)]
+struct SmallHistory {
+    capacity: usize,
+    values: VecDeque<Real>,
+}
+
+impl SmallHistory {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            values: VecDeque::with_capacity(capacity),
+        }
+    }
+
+    fn push(&mut self, value: Real) {
+        if self.values.len() == self.capacity {
+            self.values.pop_front();
+        }
+        self.values.push_back(value);
+    }
+
+    fn current(&self) -> Real {
+        *self
+            .values
+            .back()
+            .expect("history should contain a current value")
+    }
+
+    fn prev(&self, steps: usize) -> Real {
+        let index = self
+            .values
+            .len()
+            .checked_sub(steps + 1)
+            .expect("history should contain the requested offset");
+        self.values[index]
+    }
 }

@@ -104,11 +104,40 @@ fn stream_outputs_match_batch_outputs_for_chunked_runs() {
     }
 }
 
+#[test]
+fn mama_smoke_on_synthetic_series() {
+    let indicator = find("mama").expect("mama should be registered");
+    let options = vec![0.5, 0.05];
+    let input: Vec<Real> = (0..256)
+        .map(|index| 100.0 + index as Real * 0.02 + (index as Real / 11.0).sin() * 1.4)
+        .collect();
+    let inputs = vec![input.as_slice()];
+
+    let batch = indicator
+        .run(&inputs, &options)
+        .expect("mama batch should run");
+    assert_eq!(batch.len(), 2);
+    assert_eq!(batch[0].len(), input.len().saturating_sub(6));
+    assert_eq!(batch[1].len(), input.len().saturating_sub(6));
+    assert!(batch.iter().flatten().all(|value| value.is_finite()));
+
+    let mut stream = indicator
+        .create_stream(&options)
+        .expect("mama stream creation should succeed")
+        .expect("mama should expose a stream");
+    let stream_outputs = stream
+        .feed(&inputs)
+        .expect("mama stream should process synthetic input");
+    assert_eq!(stream.progress(), input.len());
+    assert_eq!(batch, stream_outputs);
+}
+
 fn default_options(indicator: &str) -> Vec<Real> {
     match indicator {
         "bbands" => vec![5.0, 2.0],
         "kst" => vec![10.0, 15.0, 20.0, 30.0, 10.0, 10.0, 10.0, 15.0],
         "macd" => vec![12.0, 26.0, 9.0],
+        "mama" => vec![0.5, 0.05],
         "psar" => vec![0.02, 0.2],
         "ultosc" => vec![5.0, 7.0, 10.0],
         "vidya" => vec![2.0, 5.0, 0.2],

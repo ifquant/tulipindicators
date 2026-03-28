@@ -8,8 +8,8 @@ use crate::indicators::indicator::{
 };
 use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, Min, Sum};
 use crate::indicators::overlay::{
-    Abands, Alma, AvgPrice, Bbands, Ce, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, MedPrice, Pbands, Pc,
-    Rmta, Sma, Tema, Trima, TypPrice, Vidya, Vwap, Vwma, WcPrice, Wilders, Wma, Zlema,
+    Abands, Alma, AvgPrice, Bbands, Ce, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, Mama, MedPrice,
+    Pbands, Pc, Rmta, Sma, Tema, Trima, TypPrice, Vidya, Vwap, Vwma, WcPrice, Wilders, Wma, Zlema,
 };
 use crate::indicators::simple::{
     Abs, Acos, Add, Asin, Atan, Ceil, Cos, Cosh, Div, Exp, Floor, Ln, Log10, Mul, Round, Sin, Sinh,
@@ -74,6 +74,7 @@ pub static LINREGSLOPE: LinRegSlope = LinRegSlope;
 pub static LN: Ln = Ln;
 pub static LOG10: Log10 = Log10;
 pub static MACD: Macd = Macd;
+pub static MAMA: Mama = Mama;
 pub static MARKETFI: MarketFi = MarketFi;
 pub static MASS: Mass = Mass;
 pub static MAX: Max = Max;
@@ -141,7 +142,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 124] {
+pub fn all() -> [&'static dyn Indicator; 125] {
     [
         &ABS,
         &ACOS,
@@ -201,6 +202,7 @@ pub fn all() -> [&'static dyn Indicator; 124] {
         &LN,
         &LOG10,
         &MACD,
+        &MAMA,
         &MARKETFI,
         &MASS,
         &MAX,
@@ -330,6 +332,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "ln" => Some(&LN),
         "log10" => Some(&LOG10),
         "macd" => Some(&MACD),
+        "mama" => Some(&MAMA),
         "marketfi" => Some(&MARKETFI),
         "mass" => Some(&MASS),
         "max" => Some(&MAX),
