@@ -29,7 +29,9 @@ impl Default for BenchmarkConfig {
             stream_chunk_size: DEFAULT_STREAM_CHUNK,
             min_iterations: DEFAULT_MIN_ITERATIONS,
             target_duration: Duration::from_millis(DEFAULT_TARGET_MS),
-            output_dir: PathBuf::from("target/indicator-bench"),
+            output_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target")
+                .join("indicator-bench"),
         }
     }
 }
@@ -80,7 +82,7 @@ pub enum BenchmarkMode {
 }
 
 impl BenchmarkMode {
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Batch => "batch",
             Self::Stream => "stream",
@@ -102,9 +104,33 @@ pub struct BenchmarkResult {
 pub fn run_registry_benchmarks(
     config: &BenchmarkConfig,
 ) -> Result<Vec<BenchmarkResult>, IndicatorError> {
+    run_indicator_benchmarks(config, registry::all().into_iter())
+}
+
+pub fn run_named_benchmarks(
+    config: &BenchmarkConfig,
+    names: &[String],
+) -> Result<Vec<BenchmarkResult>, IndicatorError> {
+    let mut indicators = Vec::with_capacity(names.len());
+    for name in names {
+        let indicator = registry::find(name).ok_or(IndicatorError::InvalidOption {
+            indicator: "benchmark",
+            option: "indicator",
+            value: 0.0,
+            reason: "unknown indicator name in benchmark filter",
+        })?;
+        indicators.push(indicator);
+    }
+    run_indicator_benchmarks(config, indicators.into_iter())
+}
+
+fn run_indicator_benchmarks<'a>(
+    config: &BenchmarkConfig,
+    indicators: impl IntoIterator<Item = &'a dyn Indicator>,
+) -> Result<Vec<BenchmarkResult>, IndicatorError> {
     let mut results = Vec::new();
 
-    for indicator in registry::all() {
+    for indicator in indicators {
         for &size in &config.sizes {
             let scenario = BenchmarkScenario::new(indicator, size)?;
             results.push(run_batch_benchmark(&scenario, config)?);

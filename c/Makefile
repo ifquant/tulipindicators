@@ -11,7 +11,7 @@ AMAL=$(SRCS:%.c=%.ca)
 
 .SUFFIXES: .c .o .h .ca
 
-all: libindicators.a sample example1 example2 fuzzer smoke smoke_amal benchmark cli
+all: libindicators.a sample example1 example2 fuzzer smoke smoke_amal benchmark benchmark_contract cli
 
 indicators.h: build.tcl templates/indicators.h templates/indicators.c templates/candles.h templates/candles.c
 	tclsh build.tcl
@@ -49,6 +49,9 @@ cli: cli.o libindicators.a
 benchmark: benchmark.o libindicators.a
 	$(CC) $(CCFLAGS) -o $@ $^ -lm
 
+benchmark_contract: benchmark_contract.o libindicators.a
+	$(CC) $(CCFLAGS) -o $@ $^ -lm
+
 #Optional benchmark program. Requires TA-Lib.
 benchmark_talib: benchmark.c libindicators.a
 	$(CC) $(CCFLAGS) -o $@ $^ -DTA_LIB -lta_lib -lm
@@ -75,6 +78,8 @@ cli.o: indicators.h candles.h
 
 benchmark.o: indicators.h candles.h
 
+benchmark_contract.o: indicators.h candles.h
+
 $(AMAL): indicators.h candles.h
 
 .c.o:
@@ -88,6 +93,7 @@ clean:
 	rm -f *.a
 	rm -f *.exe
 	rm -f *.o
+	rm -f benchmark benchmark_contract cli example1 example2 fuzzer sample smoke smoke_amal
 	rm -f indicators/*.o
 	rm -f utils/*.o
 	rm -f *.ca
@@ -98,6 +104,7 @@ veryclean:
 	rm -f *.a
 	rm -f *.exe
 	rm -f *.o
+	rm -f benchmark benchmark_contract cli example1 example2 fuzzer sample smoke smoke_amal
 	rm -f indicators/*.o
 	rm -f utils/*.o
 	rm -f *.ca
@@ -109,4 +116,3 @@ veryclean:
 	rm -f candles.c
 	rm -f tiamalgamation.c
 	rm -f -r docs
-

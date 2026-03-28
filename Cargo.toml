@@ -12,6 +12,10 @@ path = "rust/src/lib.rs"
 name = "indicator-bench"
 path = "rust/src/bin/indicator-bench.rs"
 
+[[bin]]
+name = "indicator-bench-compare"
+path = "rust/src/bin/indicator-bench-compare.rs"
+
 [[test]]
 name = "golden_indicators"
 path = "rust/tests/golden_indicators.rs"
