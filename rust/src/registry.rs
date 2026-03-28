@@ -1,11 +1,12 @@
 use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
-    Adx, Adxr, Atr, Di, Dm, Dx, Macd, Mom, Rsi, StdDev, StdErr, Stoch, StochRsi, Trix, Var,
+    Adx, Adxr, Apo, Atr, Di, Dm, Dx, Macd, Mom, Natr, Ppo, Rsi, StdDev, StdErr, Stoch, StochRsi,
+    Trix, Var, WillR,
 };
 use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, Min, Sum};
 use crate::indicators::overlay::{
-    AvgPrice, Bbands, Dema, Ema, Hma, Kama, MedPrice, Sma, Tema, TypPrice, Vidya, WcPrice, Wilders,
-    Wma,
+    AvgPrice, Bbands, Dema, Ema, Hma, Kama, MedPrice, Sma, Tema, Trima, TypPrice, Vidya, Vwma,
+    WcPrice, Wilders, Wma, Zlema,
 };
 use crate::indicators::simple::{
     Abs, Acos, Add, Asin, Atan, Ceil, Cos, Cosh, Div, Exp, Floor, Ln, Log10, Mul, Round, Sin, Sinh,
@@ -17,6 +18,7 @@ pub static ACOS: Acos = Acos;
 pub static ADX: Adx = Adx;
 pub static ADXR: Adxr = Adxr;
 pub static ADD: Add = Add;
+pub static APO: Apo = Apo;
 pub static ASIN: Asin = Asin;
 pub static ATR: Atr = Atr;
 pub static ATAN: Atan = Atan;
@@ -48,6 +50,8 @@ pub static MEDPRICE: MedPrice = MedPrice;
 pub static MIN: Min = Min;
 pub static MOM: Mom = Mom;
 pub static MUL: Mul = Mul;
+pub static NATR: Natr = Natr;
+pub static PPO: Ppo = Ppo;
 pub static RSI: Rsi = Rsi;
 pub static ROUND: Round = Round;
 pub static SMA: Sma = Sma;
@@ -65,22 +69,27 @@ pub static TANH: Tanh = Tanh;
 pub static TEMA: Tema = Tema;
 pub static TODEG: ToDeg = ToDeg;
 pub static TORAD: ToRad = ToRad;
+pub static TRIMA: Trima = Trima;
 pub static TRIX: Trix = Trix;
 pub static TRUNC: Trunc = Trunc;
 pub static TYPPRICE: TypPrice = TypPrice;
 pub static VAR: Var = Var;
 pub static VIDYA: Vidya = Vidya;
+pub static VWMA: Vwma = Vwma;
 pub static WCPRICE: WcPrice = WcPrice;
 pub static WILDERS: Wilders = Wilders;
+pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
+pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 61] {
+pub fn all() -> [&'static dyn Indicator; 68] {
     [
-        &ABS, &ACOS, &ADD, &ADX, &ADXR, &ASIN, &ATR, &ATAN, &AVGPRICE, &BBANDS, &CEIL, &COS, &COSH,
-        &CROSSANY, &CROSSOVER, &DECAY, &DEMA, &DI, &DIV, &DM, &DX, &EDECAY, &EMA, &EXP, &FLOOR,
-        &HMA, &KAMA, &LAG, &LN, &LOG10, &MACD, &MAX, &MEDPRICE, &MIN, &MOM, &MUL, &ROUND, &RSI,
-        &SIN, &SINH, &SMA, &SQRT, &STDERR, &STDDEV, &STOCH, &STOCHRSI, &SUB, &SUM, &TAN, &TANH,
-        &TEMA, &TODEG, &TORAD, &TRIX, &TRUNC, &TYPPRICE, &VAR, &VIDYA, &WCPRICE, &WILDERS, &WMA,
+        &ABS, &ACOS, &ADD, &ADX, &ADXR, &APO, &ASIN, &ATR, &ATAN, &AVGPRICE, &BBANDS, &CEIL, &COS,
+        &COSH, &CROSSANY, &CROSSOVER, &DECAY, &DEMA, &DI, &DIV, &DM, &DX, &EDECAY, &EMA, &EXP,
+        &FLOOR, &HMA, &KAMA, &LAG, &LN, &LOG10, &MACD, &MAX, &MEDPRICE, &MIN, &MOM, &MUL, &NATR,
+        &PPO, &ROUND, &RSI, &SIN, &SINH, &SMA, &SQRT, &STDERR, &STDDEV, &STOCH, &STOCHRSI, &SUB,
+        &SUM, &TAN, &TANH, &TEMA, &TODEG, &TORAD, &TRIMA, &TRIX, &TRUNC, &TYPPRICE, &VAR, &VIDYA,
+        &VWMA, &WCPRICE, &WILDERS, &WILLR, &WMA, &ZLEMA,
     ]
 }
 
@@ -91,6 +100,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "add" => Some(&ADD),
         "adx" => Some(&ADX),
         "adxr" => Some(&ADXR),
+        "apo" => Some(&APO),
         "asin" => Some(&ASIN),
         "atr" => Some(&ATR),
         "atan" => Some(&ATAN),
@@ -122,6 +132,8 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "min" => Some(&MIN),
         "mom" => Some(&MOM),
         "mul" => Some(&MUL),
+        "natr" => Some(&NATR),
+        "ppo" => Some(&PPO),
         "rsi" => Some(&RSI),
         "round" => Some(&ROUND),
         "sma" => Some(&SMA),
@@ -139,14 +151,18 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "tema" => Some(&TEMA),
         "todeg" => Some(&TODEG),
         "torad" => Some(&TORAD),
+        "trima" => Some(&TRIMA),
         "trix" => Some(&TRIX),
         "trunc" => Some(&TRUNC),
         "typprice" => Some(&TYPPRICE),
         "var" => Some(&VAR),
         "vidya" => Some(&VIDYA),
+        "vwma" => Some(&VWMA),
         "wcprice" => Some(&WCPRICE),
         "wilders" => Some(&WILDERS),
+        "willr" => Some(&WILLR),
         "wma" => Some(&WMA),
+        "zlema" => Some(&ZLEMA),
         _ => None,
     }
 }
