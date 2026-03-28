@@ -7,15 +7,46 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use candle_cases::parse_candle_cases;
-use tulipindicators::{run_candles, CandleConfig, CandleSet};
+use tulipindicators::{
+    run_candle_named, run_candle_pattern, run_candles, CandleConfig, CandleSet, TC_ALL,
+};
 
 const CANDLES_FIXTURE: &str = "c/tests/candles.txt";
+const CANDLE_CONFIGS: &[CandleConfig] = &[
+    CandleConfig {
+        period: 10,
+        body_none: 0.05,
+        body_short: 0.5,
+        body_long: 1.4,
+        wick_none: 0.05,
+        wick_long: 0.6,
+        near: 0.3,
+    },
+    CandleConfig {
+        period: 10,
+        body_none: 0.08,
+        body_short: 0.55,
+        body_long: 1.25,
+        wick_none: 0.08,
+        wick_long: 0.7,
+        near: 0.2,
+    },
+    CandleConfig {
+        period: 10,
+        body_none: 0.03,
+        body_short: 0.4,
+        body_long: 1.6,
+        wick_none: 0.03,
+        wick_long: 0.5,
+        near: 0.4,
+    },
+];
 
 #[test]
 fn rust_candles_match_named_fixture_expectations() {
     for case in parse_candle_cases(CANDLES_FIXTURE) {
         let inputs = case.inputs.each_ref().map(Vec::as_slice);
-        let result = run_candles(u64::MAX >> (64 - 26), &inputs, &CandleConfig::default())
+        let result = run_candles(TC_ALL, &inputs, &CandleConfig::default())
             .expect("rust candle engine should run");
 
         for expectation in case.expectations {
@@ -38,10 +69,10 @@ fn rust_candles_match_c_candle_engine() {
     for case in parse_candle_cases(CANDLES_FIXTURE) {
         let input_len = case.inputs[0].len();
         let inputs = case.inputs.each_ref().map(Vec::as_slice);
-        let result = run_candles(u64::MAX >> (64 - 26), &inputs, &CandleConfig::default())
+        let result = run_candles(TC_ALL, &inputs, &CandleConfig::default())
             .expect("rust candle engine should run");
         let rust_sets: Vec<CandleSet> = (0..input_len).map(|index| result.at(index)).collect();
-        let c_sets = run_c_oracle(&oracle, &case.inputs);
+        let c_sets = run_c_oracle(&oracle, TC_ALL, &CandleConfig::default(), &case.inputs);
 
         assert_eq!(rust_sets, c_sets, "candle set mismatch for case");
         assert_eq!(
@@ -57,6 +88,64 @@ fn rust_candles_match_c_candle_engine() {
                 .sum::<usize>(),
             "pattern count should match total set bits"
         );
+    }
+}
+
+#[test]
+fn rust_single_pattern_helpers_match_full_engine_and_c() {
+    for case in parse_candle_cases(CANDLES_FIXTURE) {
+        let inputs = case.inputs.each_ref().map(Vec::as_slice);
+        let full =
+            run_candles(TC_ALL, &inputs, &CandleConfig::default()).expect("full engine should run");
+        for expectation in &case.expectations {
+            let by_name = run_candle_named(&expectation.name, &inputs, &CandleConfig::default())
+                .expect("named candle helper should run");
+            let by_pattern =
+                run_candle_pattern(expectation.pattern, &inputs, &CandleConfig::default())
+                    .expect("pattern candle helper should run");
+
+            let rust_name_sets: Vec<CandleSet> = (0..case.inputs[0].len())
+                .map(|index| by_name.at(index))
+                .collect();
+            let rust_pattern_sets: Vec<CandleSet> = (0..case.inputs[0].len())
+                .map(|index| by_pattern.at(index))
+                .collect();
+            let full_sets: Vec<CandleSet> = (0..case.inputs[0].len())
+                .map(|index| full.at(index) & expectation.pattern)
+                .collect();
+
+            assert_eq!(
+                rust_name_sets, rust_pattern_sets,
+                "single-pattern helpers disagreed for {}",
+                expectation.name
+            );
+            assert_eq!(
+                rust_pattern_sets, full_sets,
+                "single-pattern helper mismatch vs full engine for {}",
+                expectation.name
+            );
+        }
+    }
+}
+
+#[test]
+fn rust_candles_match_c_for_multiple_configs() {
+    let oracle = ensure_candle_oracle();
+
+    for config in CANDLE_CONFIGS {
+        for case in parse_candle_cases(CANDLES_FIXTURE) {
+            let input_len = case.inputs[0].len();
+            let inputs = case.inputs.each_ref().map(Vec::as_slice);
+            let result =
+                run_candles(TC_ALL, &inputs, config).expect("rust candle engine should run");
+            let rust_sets: Vec<CandleSet> = (0..input_len).map(|index| result.at(index)).collect();
+            let c_sets = run_c_oracle(&oracle, TC_ALL, config, &case.inputs);
+            assert_eq!(
+                rust_sets, c_sets,
+                "candle config parity mismatch for {:?}",
+                config
+            );
+        }
     }
 }
 
@@ -107,9 +196,24 @@ fn ensure_candle_oracle() -> PathBuf {
         .clone()
 }
 
-fn run_c_oracle(oracle: &Path, inputs: &[Vec<f64>; 4]) -> Vec<CandleSet> {
+fn run_c_oracle(
+    oracle: &Path,
+    patterns: CandleSet,
+    config: &CandleConfig,
+    inputs: &[Vec<f64>; 4],
+) -> Vec<CandleSet> {
     let input_len = inputs[0].len();
-    let mut payload = format!("{input_len}\n");
+    let mut payload = format!(
+        "{} {} {:.17} {:.17} {:.17} {:.17} {:.17} {:.17}\n",
+        patterns,
+        input_len,
+        config.body_none,
+        config.body_short,
+        config.body_long,
+        config.wick_none,
+        config.wick_long,
+        config.near,
+    );
     for series in inputs {
         for value in series {
             payload.push_str(&format!("{value:.17}\n"));

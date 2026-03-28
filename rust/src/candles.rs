@@ -583,6 +583,28 @@ pub fn run_candles(
     Ok(result)
 }
 
+pub fn run_candle_pattern(
+    pattern: CandleSet,
+    inputs: &[&[Real]],
+    config: &CandleConfig,
+) -> Result<CandleResult, IndicatorError> {
+    run_candles(pattern, inputs, config)
+}
+
+pub fn run_candle_named(
+    name: &str,
+    inputs: &[&[Real]],
+    config: &CandleConfig,
+) -> Result<CandleResult, IndicatorError> {
+    let info = find_candle(name).ok_or(IndicatorError::InvalidOption {
+        indicator: "candle",
+        option: "pattern",
+        value: 0.0,
+        reason: "unknown candle pattern name",
+    })?;
+    run_candles(info.pattern, inputs, config)
+}
+
 fn body(open: &[Real], close: &[Real], index: usize) -> Real {
     (open[index] - close[index]).abs()
 }
