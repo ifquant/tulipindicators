@@ -199,49 +199,6 @@ fn run_triple_overlay_in_place(
     Ok(first.len())
 }
 
-fn run_quad_overlay(
-    metadata: &'static IndicatorMetadata,
-    inputs: &[&[Real]],
-    options: &[Real],
-    op: fn(Real, Real, Real, Real) -> Real,
-) -> Result<Vec<Vec<Real>>, IndicatorError> {
-    expect_option_count(metadata.name, options, 0)?;
-    let (first, second, third, fourth) = quadruple_input(metadata.name, inputs)?;
-    let output = first
-        .iter()
-        .zip(second.iter())
-        .zip(third.iter())
-        .zip(fourth.iter())
-        .map(|(((&a, &b), &c), &d)| op(a, b, c, d))
-        .collect();
-    Ok(vec![output])
-}
-
-fn run_quad_overlay_in_place(
-    metadata: &'static IndicatorMetadata,
-    inputs: &[&[Real]],
-    options: &[Real],
-    outputs: &mut [&mut [Real]],
-    op: fn(Real, Real, Real, Real) -> Real,
-) -> Result<usize, IndicatorError> {
-    expect_option_count(metadata.name, options, 0)?;
-    let (first, second, third, fourth) = quadruple_input(metadata.name, inputs)?;
-    validate_output_slices(metadata, outputs, 1)?;
-    ensure_output_len(metadata, outputs[0].len(), first.len(), 0)?;
-
-    for ((((dst, &a), &b), &c), &d) in outputs[0][..first.len()]
-        .iter_mut()
-        .zip(first.iter())
-        .zip(second.iter())
-        .zip(third.iter())
-        .zip(fourth.iter())
-    {
-        *dst = op(a, b, c, d);
-    }
-
-    Ok(first.len())
-}
-
 fn avgprice_op(open: Real, high: Real, low: Real, close: Real) -> Real {
     (open + high + low + close) * 0.25
 }
@@ -308,7 +265,12 @@ impl Indicator for AvgPrice {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        run_quad_overlay(&AVGPRICE_METADATA, inputs, options, avgprice_op)
+        expect_option_count(AVGPRICE_METADATA.name, options, 0)?;
+        let (open, high, low, close) = quadruple_input(AVGPRICE_METADATA.name, inputs)?;
+        let mut output = vec![0.0; open.len()];
+        let produced = run_avgprice_batch(open, high, low, close, &mut output);
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
     }
 
     fn run_in_place(
@@ -317,7 +279,17 @@ impl Indicator for AvgPrice {
         options: &[Real],
         outputs: &mut [&mut [Real]],
     ) -> Result<usize, IndicatorError> {
-        run_quad_overlay_in_place(&AVGPRICE_METADATA, inputs, options, outputs, avgprice_op)
+        expect_option_count(AVGPRICE_METADATA.name, options, 0)?;
+        let (open, high, low, close) = quadruple_input(AVGPRICE_METADATA.name, inputs)?;
+        validate_output_slices(&AVGPRICE_METADATA, outputs, 1)?;
+        ensure_output_len(&AVGPRICE_METADATA, outputs[0].len(), open.len(), 0)?;
+        Ok(run_avgprice_batch(
+            open,
+            high,
+            low,
+            close,
+            &mut outputs[0][..open.len()],
+        ))
     }
 
     fn create_stream(
@@ -330,6 +302,26 @@ impl Indicator for AvgPrice {
             avgprice_op,
         ))))
     }
+}
+
+fn run_avgprice_batch(
+    open: &[Real],
+    high: &[Real],
+    low: &[Real],
+    close: &[Real],
+    output: &mut [Real],
+) -> usize {
+    for ((((dst, &open), &high), &low), &close) in output
+        .iter_mut()
+        .zip(open.iter())
+        .zip(high.iter())
+        .zip(low.iter())
+        .zip(close.iter())
+    {
+        *dst = (open + high + low + close) * 0.25;
+    }
+
+    output.len()
 }
 
 #[derive(Debug, Clone, Copy)]
