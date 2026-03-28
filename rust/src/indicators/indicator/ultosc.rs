@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
 use crate::indicators::shared::RingSum;
@@ -27,8 +29,28 @@ impl Indicator for UltOsc {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = UltOscStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low, close) = triple_input(METADATA.name, inputs)?;
+        let mut output = vec![0.0; high.len().saturating_sub(self.lookback(options)?)];
+        let output_len = run_ultosc_batch(high, low, close, options, &mut output)?;
+        output.truncate(output_len);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low, close) = triple_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(
+            &METADATA,
+            outputs[0].len(),
+            high.len().saturating_sub(self.lookback(options)?),
+            0,
+        )?;
+        run_ultosc_batch(high, low, close, options, outputs[0])
     }
 
     fn create_stream(
@@ -107,6 +129,74 @@ impl IndicatorStream for UltOscStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_ultosc_batch(
+    high: &[Real],
+    low: &[Real],
+    close: &[Real],
+    options: &[Real],
+    output: &mut [Real],
+) -> Result<usize, IndicatorError> {
+    let (short_period, medium_period, long_period) = parse_options(options)?;
+    if high.len() <= long_period {
+        return Ok(0);
+    }
+
+    let mut bp_vals = vec![0.0; long_period];
+    let mut r_vals = vec![0.0; long_period];
+    let mut bp_long_sum = 0.0;
+    let mut r_long_sum = 0.0;
+    let mut bp_short_sum = 0.0;
+    let mut bp_medium_sum = 0.0;
+    let mut r_short_sum = 0.0;
+    let mut r_medium_sum = 0.0;
+    let mut ring_index = 0usize;
+    let mut out_index = 0usize;
+
+    for index in 1..high.len() {
+        let true_low = low[index].min(close[index - 1]);
+        let true_high = high[index].max(close[index - 1]);
+        let bp = close[index] - true_low;
+        let range = true_high - true_low;
+
+        bp_short_sum += bp;
+        bp_medium_sum += bp;
+        r_short_sum += range;
+        r_medium_sum += range;
+
+        bp_long_sum += bp - bp_vals[ring_index];
+        r_long_sum += range - r_vals[ring_index];
+        bp_vals[ring_index] = bp;
+        r_vals[ring_index] = range;
+
+        if index > short_period {
+            let short_index = (ring_index + long_period - short_period) % long_period;
+            bp_short_sum -= bp_vals[short_index];
+            r_short_sum -= r_vals[short_index];
+
+            if index > medium_period {
+                let medium_index = (ring_index + long_period - medium_period) % long_period;
+                bp_medium_sum -= bp_vals[medium_index];
+                r_medium_sum -= r_vals[medium_index];
+            }
+        }
+
+        if index >= long_period {
+            let first = 4.0 * bp_short_sum / r_short_sum;
+            let second = 2.0 * bp_medium_sum / r_medium_sum;
+            let third = bp_long_sum / r_long_sum;
+            output[out_index] = (first + second + third) * 100.0 / 7.0;
+            out_index += 1;
+        }
+
+        ring_index += 1;
+        if ring_index == long_period {
+            ring_index = 0;
+        }
+    }
+
+    Ok(out_index)
 }
 
 fn parse_options(options: &[Real]) -> Result<(usize, usize, usize), IndicatorError> {
