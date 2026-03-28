@@ -119,45 +119,6 @@ impl IndicatorStream for QuadOverlayStream {
     }
 }
 
-fn run_double_overlay(
-    metadata: &'static IndicatorMetadata,
-    inputs: &[&[Real]],
-    options: &[Real],
-    op: fn(Real, Real) -> Real,
-) -> Result<Vec<Vec<Real>>, IndicatorError> {
-    expect_option_count(metadata.name, options, 0)?;
-    let (first, second) = double_input(metadata.name, inputs)?;
-    let output = first
-        .iter()
-        .zip(second.iter())
-        .map(|(&a, &b)| op(a, b))
-        .collect();
-    Ok(vec![output])
-}
-
-fn run_double_overlay_in_place(
-    metadata: &'static IndicatorMetadata,
-    inputs: &[&[Real]],
-    options: &[Real],
-    outputs: &mut [&mut [Real]],
-    op: fn(Real, Real) -> Real,
-) -> Result<usize, IndicatorError> {
-    expect_option_count(metadata.name, options, 0)?;
-    let (first, second) = double_input(metadata.name, inputs)?;
-    validate_output_slices(metadata, outputs, 1)?;
-    ensure_output_len(metadata, outputs[0].len(), first.len(), 0)?;
-
-    for ((dst, &a), &b) in outputs[0][..first.len()]
-        .iter_mut()
-        .zip(first.iter())
-        .zip(second.iter())
-    {
-        *dst = op(a, b);
-    }
-
-    Ok(first.len())
-}
-
 fn run_triple_overlay(
     metadata: &'static IndicatorMetadata,
     inputs: &[&[Real]],
@@ -338,7 +299,12 @@ impl Indicator for MedPrice {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        run_double_overlay(&MEDPRICE_METADATA, inputs, options, medprice_op)
+        expect_option_count(MEDPRICE_METADATA.name, options, 0)?;
+        let (high, low) = double_input(MEDPRICE_METADATA.name, inputs)?;
+        let mut output = vec![0.0; high.len()];
+        let produced = run_medprice_batch(high, low, &mut output);
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
     }
 
     fn run_in_place(
@@ -347,7 +313,11 @@ impl Indicator for MedPrice {
         options: &[Real],
         outputs: &mut [&mut [Real]],
     ) -> Result<usize, IndicatorError> {
-        run_double_overlay_in_place(&MEDPRICE_METADATA, inputs, options, outputs, medprice_op)
+        expect_option_count(MEDPRICE_METADATA.name, options, 0)?;
+        let (high, low) = double_input(MEDPRICE_METADATA.name, inputs)?;
+        validate_output_slices(&MEDPRICE_METADATA, outputs, 1)?;
+        ensure_output_len(&MEDPRICE_METADATA, outputs[0].len(), high.len(), 0)?;
+        Ok(run_medprice_batch(high, low, &mut outputs[0][..high.len()]))
     }
 
     fn create_stream(
@@ -360,6 +330,13 @@ impl Indicator for MedPrice {
             medprice_op,
         ))))
     }
+}
+
+fn run_medprice_batch(high: &[Real], low: &[Real], output: &mut [Real]) -> usize {
+    for index in 0..high.len() {
+        output[index] = (high[index] + low[index]) * 0.5;
+    }
+    output.len()
 }
 
 #[derive(Debug, Clone, Copy)]

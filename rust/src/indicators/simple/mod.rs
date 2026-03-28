@@ -115,11 +115,10 @@ fn run_binary(
 ) -> Result<Vec<Vec<Real>>, IndicatorError> {
     expect_option_count(metadata.name, options, 0)?;
     let (left, right) = double_input(metadata.name, inputs)?;
-    let output = left
-        .iter()
-        .zip(right.iter())
-        .map(|(&lhs, &rhs)| op(lhs, rhs))
-        .collect();
+    let mut output = vec![0.0; left.len()];
+    for index in 0..left.len() {
+        output[index] = op(left[index], right[index]);
+    }
     Ok(vec![output])
 }
 
@@ -135,12 +134,8 @@ fn run_binary_in_place(
     validate_output_slices(metadata, outputs, 1)?;
     ensure_output_len(metadata, outputs[0].len(), left.len(), 0)?;
 
-    for ((dst, &lhs), &rhs) in outputs[0][..left.len()]
-        .iter_mut()
-        .zip(left.iter())
-        .zip(right.iter())
-    {
-        *dst = op(lhs, rhs);
+    for index in 0..left.len() {
+        outputs[0][index] = op(left[index], right[index]);
     }
 
     Ok(left.len())
