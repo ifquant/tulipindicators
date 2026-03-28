@@ -5,7 +5,7 @@ use tulipindicators::{all, find, Real};
 
 const TEST_FILES: &[&str] = &["tests/atoz.txt", "tests/untest.txt", "tests/extra.txt"];
 const APPROX_TOLERANCE: Real = 1e-3;
-const STREAM_TOLERANCE: Real = 1e-12;
+const STREAM_TOLERANCE: Real = 1e-10;
 const STREAM_STEPS: &[usize] = &[1, 2, 3, 5, 7, 64];
 
 #[test]

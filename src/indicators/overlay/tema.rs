@@ -1,7 +1,8 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata};
+use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
+use crate::indicators::shared::EmaState;
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "tema",
@@ -59,6 +60,71 @@ impl Indicator for Tema {
                     }
                 }
             }
+        }
+
+        Ok(vec![output])
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        Ok(Some(Box::new(TemaStream::new(options)?)))
+    }
+}
+
+struct TemaStream {
+    period: usize,
+    progress: usize,
+    ema1: EmaState,
+    ema2: EmaState,
+    ema3: EmaState,
+}
+
+impl TemaStream {
+    fn new(options: &[Real]) -> Result<Self, IndicatorError> {
+        let period = parse_period(options)?;
+        let multiplier = ema_multiplier(period);
+        Ok(Self {
+            period,
+            progress: 0,
+            ema1: EmaState::new(multiplier),
+            ema2: EmaState::new(multiplier),
+            ema3: EmaState::new(multiplier),
+        })
+    }
+}
+
+impl IndicatorStream for TemaStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.progress
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let mut output = Vec::new();
+        let second_start = (self.period - 1) * 2;
+        let lookback = (self.period - 1) * 3;
+
+        for sample in input {
+            let ema1 = self.ema1.feed(*sample);
+            let index = self.progress;
+
+            if index >= self.period - 1 {
+                let ema2 = self.ema2.feed(ema1);
+                if index >= second_start {
+                    let ema3 = self.ema3.feed(ema2);
+                    if index >= lookback {
+                        output.push(3.0 * ema1 - 3.0 * ema2 + ema3);
+                    }
+                }
+            }
+
+            self.progress += 1;
         }
 
         Ok(vec![output])

@@ -1,5 +1,5 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata};
+use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 
@@ -71,6 +71,89 @@ impl Indicator for Bbands {
                 scale,
                 stddev,
             );
+        }
+
+        Ok(vec![lower, middle, upper])
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        Ok(Some(Box::new(BbandsStream::new(options)?)))
+    }
+}
+
+struct BbandsStream {
+    period: usize,
+    stddev: Real,
+    scale: Real,
+    progress: usize,
+    sum: Real,
+    sum2: Real,
+    window: Vec<Real>,
+    index: usize,
+}
+
+impl BbandsStream {
+    fn new(options: &[Real]) -> Result<Self, IndicatorError> {
+        let (period, stddev) = parse_options(options)?;
+        Ok(Self {
+            period,
+            stddev,
+            scale: 1.0 / period as Real,
+            progress: 0,
+            sum: 0.0,
+            sum2: 0.0,
+            window: Vec::with_capacity(period),
+            index: 0,
+        })
+    }
+}
+
+impl IndicatorStream for BbandsStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.progress
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let mut lower = Vec::new();
+        let mut middle = Vec::new();
+        let mut upper = Vec::new();
+
+        for sample in input {
+            if self.window.len() < self.period {
+                self.window.push(*sample);
+                self.sum += *sample;
+                self.sum2 += sample * sample;
+            } else {
+                let replaced = self.window[self.index];
+                self.sum -= replaced;
+                self.sum2 -= replaced * replaced;
+                self.window[self.index] = *sample;
+                self.sum += *sample;
+                self.sum2 += sample * sample;
+                self.index = (self.index + 1) % self.period;
+            }
+
+            if self.window.len() == self.period {
+                push_band_values(
+                    &mut lower,
+                    &mut middle,
+                    &mut upper,
+                    self.sum,
+                    self.sum2,
+                    self.scale,
+                    self.stddev,
+                );
+            }
+
+            self.progress += 1;
         }
 
         Ok(vec![lower, middle, upper])

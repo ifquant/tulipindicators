@@ -1,7 +1,8 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata};
+use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
+use crate::indicators::shared::EmaState;
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "macd",
@@ -61,6 +62,86 @@ impl Indicator for Macd {
                 signal.push(signal_ema);
                 hist.push(macd_value - signal_ema);
             }
+        }
+
+        Ok(vec![macd, signal, hist])
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        Ok(Some(Box::new(MacdStream::new(options)?)))
+    }
+}
+
+struct MacdStream {
+    long_period: usize,
+    progress: usize,
+    short_ema: EmaState,
+    long_ema: EmaState,
+    signal_multiplier: Real,
+    signal_ema: Option<Real>,
+}
+
+impl MacdStream {
+    fn new(options: &[Real]) -> Result<Self, IndicatorError> {
+        let (short_period, long_period, signal_period) = parse_options(options)?;
+        let (short_per, long_per) = ema_pair(short_period, long_period);
+        Ok(Self {
+            long_period,
+            progress: 0,
+            short_ema: EmaState::new(short_per),
+            long_ema: EmaState::new(long_per),
+            signal_multiplier: 2.0 / (signal_period as Real + 1.0),
+            signal_ema: None,
+        })
+    }
+}
+
+impl IndicatorStream for MacdStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.progress
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let mut macd = Vec::new();
+        let mut signal = Vec::new();
+        let mut hist = Vec::new();
+
+        for sample in input {
+            let short_value = self.short_ema.feed(*sample);
+            let long_value = self.long_ema.feed(*sample);
+            let index = self.progress;
+
+            if index >= 1 {
+                let macd_value = short_value - long_value;
+
+                if index == self.long_period - 1 {
+                    self.signal_ema = Some(macd_value);
+                }
+
+                if index >= self.long_period - 1 {
+                    let signal_value = match self.signal_ema {
+                        Some(current) if index > self.long_period - 1 => {
+                            (macd_value - current) * self.signal_multiplier + current
+                        }
+                        Some(current) => current,
+                        None => macd_value,
+                    };
+                    self.signal_ema = Some(signal_value);
+                    macd.push(macd_value);
+                    signal.push(signal_value);
+                    hist.push(macd_value - signal_value);
+                }
+            }
+
+            self.progress += 1;
         }
 
         Ok(vec![macd, signal, hist])
