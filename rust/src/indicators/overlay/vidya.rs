@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 use crate::indicators::shared::RollingStatsState;
@@ -27,8 +29,40 @@ impl Indicator for Vidya {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = VidyaStream::new(options)?;
-        stream.feed(inputs)
+        let input = single_input(METADATA.name, inputs)?;
+        let (short_period, long_period, alpha) = parse_options(options)?;
+        let output_len = input.len().saturating_sub(long_period - 2);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
+        }
+
+        let mut output = vec![0.0; output_len];
+        let written = self.run_kernel(input, short_period, long_period, alpha, &mut output)?;
+        debug_assert_eq!(written, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let (short_period, long_period, alpha) = parse_options(options)?;
+        let output_len = input.len().saturating_sub(long_period - 2);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        if output_len == 0 {
+            return Ok(0);
+        }
+        self.run_kernel(
+            input,
+            short_period,
+            long_period,
+            alpha,
+            &mut outputs[0][..output_len],
+        )
     }
 
     fn create_stream(
@@ -36,6 +70,83 @@ impl Indicator for Vidya {
         options: &[Real],
     ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
         Ok(Some(Box::new(VidyaStream::new(options)?)))
+    }
+}
+
+impl Vidya {
+    fn run_kernel(
+        &self,
+        input: &[Real],
+        short_period: usize,
+        long_period: usize,
+        alpha: Real,
+        output: &mut [Real],
+    ) -> Result<usize, IndicatorError> {
+        let short_div = 1.0 / short_period as Real;
+        let long_div = 1.0 / long_period as Real;
+        let mut short_sum = 0.0;
+        let mut short_sum2 = 0.0;
+        let mut long_sum = 0.0;
+        let mut long_sum2 = 0.0;
+
+        for (index, &sample) in input.iter().take(long_period).enumerate() {
+            long_sum += sample;
+            long_sum2 += sample * sample;
+            if index >= long_period - short_period {
+                short_sum += sample;
+                short_sum2 += sample * sample;
+            }
+        }
+
+        let mut value = input[long_period - 2];
+        output[0] = value;
+        let mut out_index = 1usize;
+
+        if long_period - 1 < input.len() {
+            let short_stddev =
+                (short_sum2 * short_div - (short_sum * short_div) * (short_sum * short_div)).sqrt();
+            let long_stddev =
+                (long_sum2 * long_div - (long_sum * long_div) * (long_sum * long_div)).sqrt();
+            let mut k = short_stddev / long_stddev;
+            if k.is_nan() {
+                k = 0.0;
+            }
+            k *= alpha;
+            value += (input[long_period - 1] - value) * k;
+            output[out_index] = value;
+            out_index += 1;
+        }
+
+        for index in long_period..input.len() {
+            let sample = input[index];
+            long_sum += sample;
+            long_sum2 += sample * sample;
+            short_sum += sample;
+            short_sum2 += sample * sample;
+
+            let old_long = input[index - long_period];
+            long_sum -= old_long;
+            long_sum2 -= old_long * old_long;
+
+            let old_short = input[index - short_period];
+            short_sum -= old_short;
+            short_sum2 -= old_short * old_short;
+
+            let short_stddev =
+                (short_sum2 * short_div - (short_sum * short_div) * (short_sum * short_div)).sqrt();
+            let long_stddev =
+                (long_sum2 * long_div - (long_sum * long_div) * (long_sum * long_div)).sqrt();
+            let mut k = short_stddev / long_stddev;
+            if k.is_nan() {
+                k = 0.0;
+            }
+            k *= alpha;
+            value += (sample - value) * k;
+            output[out_index] = value;
+            out_index += 1;
+        }
+
+        Ok(out_index)
     }
 }
 
@@ -83,21 +194,15 @@ impl IndicatorStream for VidyaStream {
                 self.value = Some(*sample);
                 output.push(*sample);
             } else if self.progress + 1 >= self.long_period {
-                let short_stddev = short
-                    .expect("short stats should be available once long period is reached")
-                    .variance
-                    .sqrt();
-                let long_stddev = long
-                    .expect("long stats should be available once long period is reached")
-                    .variance
-                    .sqrt();
+                let short_stddev = short.map(|stats| stats.variance.sqrt()).unwrap_or(0.0);
+                let long_stddev = long.map(|stats| stats.variance.sqrt()).unwrap_or(0.0);
                 let mut k = short_stddev / long_stddev;
                 if k.is_nan() {
                     k = 0.0;
                 }
                 k *= self.alpha;
 
-                let current = self.value.expect("vidya value should be initialized");
+                let current = self.value.unwrap_or(*sample);
                 let next = (*sample - current) * k + current;
                 self.value = Some(next);
                 output.push(next);

@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 use std::collections::VecDeque;
@@ -30,8 +32,33 @@ impl Indicator for Kama {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = KamaStream::new(options)?;
-        stream.feed(inputs)
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        if input.len() < period {
+            return Ok(vec![Vec::new()]);
+        }
+
+        let mut output = vec![0.0; input.len() - period + 1];
+        let written = self.run_kernel(input, period, &mut output)?;
+        debug_assert_eq!(written, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        if input.len() < period {
+            return Ok(0);
+        }
+        self.run_kernel(input, period, &mut outputs[0][..output_len])
     }
 
     fn create_stream(
@@ -39,6 +66,43 @@ impl Indicator for Kama {
         options: &[Real],
     ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
         Ok(Some(Box::new(KamaStream::new(options)?)))
+    }
+}
+
+impl Kama {
+    fn run_kernel(
+        &self,
+        input: &[Real],
+        period: usize,
+        output: &mut [Real],
+    ) -> Result<usize, IndicatorError> {
+        let mut sum = 0.0;
+        for index in 1..period {
+            sum += (input[index] - input[index - 1]).abs();
+        }
+
+        let mut kama = input[period - 1];
+        output[0] = kama;
+        let mut out_index = 1usize;
+
+        for index in period..input.len() {
+            sum += (input[index] - input[index - 1]).abs();
+            if index > period {
+                sum -= (input[index - period] - input[index - period - 1]).abs();
+            }
+
+            let er = if sum != 0.0 {
+                (input[index] - input[index - period]).abs() / sum
+            } else {
+                1.0
+            };
+            let sc = (er * (FAST_PER - SLOW_PER) + SLOW_PER).powi(2);
+            kama += sc * (input[index] - kama);
+            output[out_index] = kama;
+            out_index += 1;
+        }
+
+        Ok(out_index)
     }
 }
 
@@ -85,10 +149,7 @@ impl IndicatorStream for KamaStream {
                 self.diff_sum += diff;
                 self.diffs.push_back(diff);
                 if self.diffs.len() > self.period {
-                    self.diff_sum -= self
-                        .diffs
-                        .pop_front()
-                        .expect("diff queue should not be empty");
+                    self.diff_sum -= self.diffs.pop_front().unwrap_or(0.0);
                 }
             }
 
@@ -101,17 +162,14 @@ impl IndicatorStream for KamaStream {
                 self.value = Some(*sample);
                 output.push(*sample);
             } else if self.progress + 1 > self.period {
-                let oldest = *self
-                    .prices
-                    .front()
-                    .expect("price queue should contain the period lookback");
+                let oldest = *self.prices.front().unwrap_or(sample);
                 let er = if self.diff_sum != 0.0 {
                     (*sample - oldest).abs() / self.diff_sum
                 } else {
                     1.0
                 };
                 let sc = (er * (FAST_PER - SLOW_PER) + SLOW_PER).powi(2);
-                let current = self.value.expect("kama value should be initialized");
+                let current = self.value.unwrap_or(*sample);
                 let next = current + sc * (*sample - current);
                 self.value = Some(next);
                 output.push(next);
