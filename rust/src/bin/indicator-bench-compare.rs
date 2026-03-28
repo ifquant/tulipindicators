@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 use tulipindicators::benchmark::{
-    render_tsv, run_named_benchmarks, BenchmarkConfig, BenchmarkResult,
+    render_kernel_probe_tsv, render_tsv, run_named_benchmarks, run_named_kernel_probes,
+    BenchmarkConfig, BenchmarkResult, KernelProbeResult,
 };
 
 const DEFAULT_REGRESSION_WARN: f64 = 1.15;
@@ -77,6 +78,18 @@ struct SelfCompareRow {
     status: &'static str,
 }
 
+#[derive(Debug, Clone)]
+struct KernelSplitRow {
+    indicator: String,
+    input_len: usize,
+    run_in_place_ns_per_input: f64,
+    kernel_ns_per_input: f64,
+    ratio_to_kernel: f64,
+    run_in_place_sample_cv: f64,
+    kernel_sample_cv: f64,
+    status: &'static str,
+}
+
 fn main() -> ExitCode {
     let config = BenchmarkConfig::from_env();
     let regression_warn = std::env::var("TI_BENCH_REGRESSION_WARN")
@@ -100,6 +113,9 @@ fn main() -> ExitCode {
             println!("- {}", paths.compare_md.display());
             println!("- {}", paths.self_compare_tsv.display());
             println!("- {}", paths.self_compare_md.display());
+            println!("- {}", paths.kernel_probe_tsv.display());
+            println!("- {}", paths.kernel_split_tsv.display());
+            println!("- {}", paths.kernel_split_md.display());
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -117,6 +133,9 @@ struct ComparePaths {
     compare_md: PathBuf,
     self_compare_tsv: PathBuf,
     self_compare_md: PathBuf,
+    kernel_probe_tsv: PathBuf,
+    kernel_split_tsv: PathBuf,
+    kernel_split_md: PathBuf,
 }
 
 fn run_compare(
@@ -131,6 +150,8 @@ fn run_compare(
     let indicator_names = unique_indicator_names(&c_rows);
     let rust_results =
         run_named_benchmarks(config, &indicator_names).map_err(|e| format!("{e:?}"))?;
+    let kernel_probes =
+        run_named_kernel_probes(config, &indicator_names).map_err(|e| format!("{e:?}"))?;
     let compare_rows = compare_rows(&c_rows, &rust_results, regression_warn)?;
     let rust_best_tsv = config.output_dir.join("rust-best.tsv");
     let existing_best = if rust_best_tsv.exists() {
@@ -147,6 +168,10 @@ fn run_compare(
     let compare_md = config.output_dir.join("compare-latest.md");
     let self_compare_tsv = config.output_dir.join("rust-self-compare-latest.tsv");
     let self_compare_md = config.output_dir.join("rust-self-compare-latest.md");
+    let kernel_probe_tsv = config.output_dir.join("rust-kernel-probes-latest.tsv");
+    let kernel_split_tsv = config.output_dir.join("rust-kernel-split-latest.tsv");
+    let kernel_split_md = config.output_dir.join("rust-kernel-split-latest.md");
+    let kernel_split_rows = compare_kernel_split_rows(&rust_results, &kernel_probes);
 
     fs::write(&c_tsv, render_external_tsv(&c_rows)).map_err(|error| error.to_string())?;
     fs::write(&rust_tsv, render_tsv(&rust_results)).map_err(|error| error.to_string())?;
@@ -168,11 +193,24 @@ fn run_compare(
         render_self_compare_markdown(&self_compare_rows, self_regression_warn),
     )
     .map_err(|error| error.to_string())?;
+    fs::write(&kernel_probe_tsv, render_kernel_probe_tsv(&kernel_probes))
+        .map_err(|error| error.to_string())?;
+    fs::write(
+        &kernel_split_tsv,
+        render_kernel_split_tsv(&kernel_split_rows),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(
+        &kernel_split_md,
+        render_kernel_split_markdown(&kernel_split_rows),
+    )
+    .map_err(|error| error.to_string())?;
 
     print!(
-        "{}\n{}",
+        "{}\n{}\n{}",
         render_compare_markdown(&compare_rows, regression_warn),
-        render_self_compare_markdown(&self_compare_rows, self_regression_warn)
+        render_self_compare_markdown(&self_compare_rows, self_regression_warn),
+        render_kernel_split_markdown(&kernel_split_rows)
     );
 
     Ok(ComparePaths {
@@ -183,6 +221,9 @@ fn run_compare(
         compare_md,
         self_compare_tsv,
         self_compare_md,
+        kernel_probe_tsv,
+        kernel_split_tsv,
+        kernel_split_md,
     })
 }
 
@@ -518,6 +559,50 @@ fn compare_rows(
     Ok(rows)
 }
 
+fn compare_kernel_split_rows(
+    rust_results: &[BenchmarkResult],
+    kernel_probes: &[KernelProbeResult],
+) -> Vec<KernelSplitRow> {
+    let mut kernel_map = BTreeMap::new();
+    for row in kernel_probes {
+        kernel_map.insert((row.indicator.to_string(), row.input_len), row);
+    }
+
+    let mut rows = Vec::new();
+    for rust_row in rust_results {
+        if !matches!(
+            rust_row.mode,
+            tulipindicators::benchmark::BenchmarkMode::Batch
+        ) {
+            continue;
+        }
+        let key = (rust_row.indicator.to_string(), rust_row.input_len);
+        let Some(kernel_row) = kernel_map.get(&key) else {
+            continue;
+        };
+        let ratio_to_kernel = rust_row.ns_per_input / kernel_row.ns_per_input;
+        let status = if ratio_to_kernel > 1.20 {
+            "heavy-wrapper"
+        } else if ratio_to_kernel > 1.05 {
+            "moderate-wrapper"
+        } else {
+            "thin-wrapper"
+        };
+        rows.push(KernelSplitRow {
+            indicator: rust_row.indicator.to_string(),
+            input_len: rust_row.input_len,
+            run_in_place_ns_per_input: rust_row.ns_per_input,
+            kernel_ns_per_input: kernel_row.ns_per_input,
+            ratio_to_kernel,
+            run_in_place_sample_cv: rust_row.sample_cv,
+            kernel_sample_cv: kernel_row.sample_cv,
+            status,
+        });
+    }
+    rows.sort_by(|a, b| b.ratio_to_kernel.total_cmp(&a.ratio_to_kernel));
+    rows
+}
+
 fn render_external_tsv(rows: &[ExternalBenchmarkRow]) -> String {
     let mut out = String::from(
         "indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tsample_stddev_ms\tsample_cv\tns_per_input\n",
@@ -675,6 +760,47 @@ fn render_self_compare_markdown(rows: &[SelfCompareRow], self_regression_warn: f
             row.current_sample_max_ms,
             row.current_sample_stddev_ms,
             row.current_sample_cv,
+            row.status
+        ));
+    }
+    out
+}
+
+fn render_kernel_split_tsv(rows: &[KernelSplitRow]) -> String {
+    let mut out = String::from(
+        "indicator\tinput_len\trun_in_place_ns_per_input\tkernel_ns_per_input\tratio_to_kernel\trun_in_place_sample_cv\tkernel_sample_cv\tstatus\n",
+    );
+    for row in rows {
+        out.push_str(&format!(
+            "{}\t{}\t{:.2}\t{:.2}\t{:.3}\t{:.3}\t{:.3}\t{}\n",
+            row.indicator,
+            row.input_len,
+            row.run_in_place_ns_per_input,
+            row.kernel_ns_per_input,
+            row.ratio_to_kernel,
+            row.run_in_place_sample_cv,
+            row.kernel_sample_cv,
+            row.status
+        ));
+    }
+    out
+}
+
+fn render_kernel_split_markdown(rows: &[KernelSplitRow]) -> String {
+    let mut out = String::new();
+    out.push_str("# Rust In-Place vs Kernel Benchmarks\n\n");
+    out.push_str("| indicator | input_len | run_in_place ns/input | kernel ns/input | ratio to kernel | run_in_place cv | kernel cv | status |\n");
+    out.push_str("| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n");
+    for row in rows {
+        out.push_str(&format!(
+            "| {} | {} | {:.2} | {:.2} | {:.3} | {:.3} | {:.3} | {} |\n",
+            row.indicator,
+            row.input_len,
+            row.run_in_place_ns_per_input,
+            row.kernel_ns_per_input,
+            row.ratio_to_kernel,
+            row.run_in_place_sample_cv,
+            row.kernel_sample_cv,
             row.status
         ));
     }

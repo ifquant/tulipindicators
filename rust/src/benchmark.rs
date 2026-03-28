@@ -129,6 +129,21 @@ pub struct BenchmarkResult {
     pub ns_per_input: f64,
 }
 
+#[derive(Debug, Clone)]
+pub struct KernelProbeResult {
+    pub indicator: &'static str,
+    pub input_len: usize,
+    pub calibration_runs: usize,
+    pub calibration_ms: f64,
+    pub iterations: usize,
+    pub sample_min: Duration,
+    pub elapsed: Duration,
+    pub sample_max: Duration,
+    pub sample_stddev_ms: f64,
+    pub sample_cv: f64,
+    pub ns_per_input: f64,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CalibrationResult {
     runs: usize,
@@ -157,6 +172,36 @@ pub fn run_named_benchmarks(
         indicators.push(indicator);
     }
     run_indicator_benchmarks(config, indicators)
+}
+
+pub fn run_named_kernel_probes(
+    config: &BenchmarkConfig,
+    names: &[String],
+) -> Result<Vec<KernelProbeResult>, IndicatorError> {
+    let requested: std::collections::BTreeSet<&str> = names.iter().map(String::as_str).collect();
+    let mut results = Vec::new();
+
+    for &size in &config.sizes {
+        for name in ["ema", "wilders", "zlema", "macd"] {
+            if !requested.contains(name) {
+                continue;
+            }
+            let scenario = BenchmarkScenario::new(
+                registry::find(name).expect("kernel probe indicator should exist"),
+                size,
+            )?;
+            let result = match name {
+                "ema" => run_ema_kernel_probe(&scenario, config)?,
+                "wilders" => run_wilders_kernel_probe(&scenario, config)?,
+                "zlema" => run_zlema_kernel_probe(&scenario, config)?,
+                "macd" => run_macd_kernel_probe(&scenario, config)?,
+                _ => continue,
+            };
+            results.push(result);
+        }
+    }
+
+    Ok(results)
 }
 
 fn run_indicator_benchmarks<'a>(
@@ -251,10 +296,64 @@ pub fn render_tsv(results: &[BenchmarkResult]) -> String {
     out
 }
 
+pub fn render_kernel_probe_tsv(results: &[KernelProbeResult]) -> String {
+    let mut out = String::from(
+        "indicator\tinput_len\tcalibration_runs\tcalibration_ms\titerations\tsample_min_ms\tsample_median_ms\tsample_max_ms\tsample_stddev_ms\tsample_cv\tns_per_input\n",
+    );
+
+    for result in results {
+        let _ = writeln!(
+            out,
+            "{}\t{}\t{}\t{:.3}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.2}",
+            result.indicator,
+            result.input_len,
+            result.calibration_runs,
+            result.calibration_ms,
+            result.iterations,
+            result.sample_min.as_secs_f64() * 1000.0,
+            result.elapsed.as_secs_f64() * 1000.0,
+            result.sample_max.as_secs_f64() * 1000.0,
+            result.sample_stddev_ms,
+            result.sample_cv,
+            result.ns_per_input,
+        );
+    }
+
+    out
+}
+
 struct BenchmarkScenario<'a> {
     indicator: &'a dyn Indicator,
     options: Vec<Real>,
     inputs: Vec<Vec<Real>>,
+}
+
+fn finish_kernel_probe(
+    indicator: &'static str,
+    input_len: usize,
+    calibration: CalibrationResult,
+    iterations: usize,
+    samples: Vec<Duration>,
+) -> KernelProbeResult {
+    let elapsed = median_duration(samples.clone());
+    let sample_min = samples.iter().copied().min().unwrap_or(elapsed);
+    let sample_max = samples.iter().copied().max().unwrap_or(elapsed);
+    let sample_stddev_ms = stddev_duration_ms(&samples);
+    let sample_cv = coefficient_of_variation(sample_stddev_ms, elapsed.as_secs_f64() * 1000.0);
+
+    KernelProbeResult {
+        indicator,
+        input_len,
+        calibration_runs: calibration.runs,
+        calibration_ms: calibration.elapsed.as_secs_f64() * 1000.0,
+        iterations,
+        sample_min,
+        elapsed,
+        sample_max,
+        sample_stddev_ms,
+        sample_cv,
+        ns_per_input: elapsed.as_secs_f64() * 1_000_000_000.0 / (input_len * iterations) as f64,
+    }
 }
 
 impl<'a> BenchmarkScenario<'a> {
@@ -430,6 +529,183 @@ fn run_stream_benchmark(
     })
 }
 
+fn run_ema_kernel_probe(
+    scenario: &BenchmarkScenario<'_>,
+    config: &BenchmarkConfig,
+) -> Result<KernelProbeResult, IndicatorError> {
+    let input = &scenario.inputs[0];
+    let period = scenario.options[0] as usize;
+    let multiplier = 2.0 / (period as Real + 1.0);
+    let mut output = vec![0.0; input.len()];
+    run_ema_kernel(input, multiplier, &mut output);
+
+    let calibration = calibrate_iterations(config, |runs| {
+        for _ in 0..runs {
+            run_ema_kernel(input, multiplier, &mut output);
+            black_box(output[input.len().saturating_sub(1)]);
+        }
+        Ok(())
+    })?;
+    let iterations = calibration.iterations;
+    let mut samples = Vec::with_capacity(config.repeats);
+    for _ in 0..config.repeats {
+        let start = Instant::now();
+        for _ in 0..iterations {
+            run_ema_kernel(input, multiplier, &mut output);
+            black_box(output[input.len().saturating_sub(1)]);
+        }
+        samples.push(start.elapsed());
+    }
+
+    Ok(finish_kernel_probe(
+        "ema",
+        input.len(),
+        calibration,
+        iterations,
+        samples,
+    ))
+}
+
+fn run_wilders_kernel_probe(
+    scenario: &BenchmarkScenario<'_>,
+    config: &BenchmarkConfig,
+) -> Result<KernelProbeResult, IndicatorError> {
+    let input = &scenario.inputs[0];
+    let period = scenario.options[0] as usize;
+    let output_len = input.len().saturating_sub(period.saturating_sub(1));
+    let mut output = vec![0.0; output_len];
+    run_wilders_kernel(input, period, &mut output);
+
+    let calibration = calibrate_iterations(config, |runs| {
+        for _ in 0..runs {
+            let produced = run_wilders_kernel(input, period, &mut output);
+            black_box((produced, output[produced.saturating_sub(1)]));
+        }
+        Ok(())
+    })?;
+    let iterations = calibration.iterations;
+    let mut samples = Vec::with_capacity(config.repeats);
+    for _ in 0..config.repeats {
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let produced = run_wilders_kernel(input, period, &mut output);
+            black_box((produced, output[produced.saturating_sub(1)]));
+        }
+        samples.push(start.elapsed());
+    }
+
+    Ok(finish_kernel_probe(
+        "wilders",
+        input.len(),
+        calibration,
+        iterations,
+        samples,
+    ))
+}
+
+fn run_zlema_kernel_probe(
+    scenario: &BenchmarkScenario<'_>,
+    config: &BenchmarkConfig,
+) -> Result<KernelProbeResult, IndicatorError> {
+    let input = &scenario.inputs[0];
+    let period = scenario.options[0] as usize;
+    let lag = (period - 1) / 2;
+    let lookback = lag.saturating_sub(1);
+    let mut output = vec![0.0; input.len().saturating_sub(lookback)];
+    run_zlema_kernel(input, period, &mut output);
+
+    let calibration = calibrate_iterations(config, |runs| {
+        for _ in 0..runs {
+            let produced = run_zlema_kernel(input, period, &mut output);
+            black_box((produced, output[produced.saturating_sub(1)]));
+        }
+        Ok(())
+    })?;
+    let iterations = calibration.iterations;
+    let mut samples = Vec::with_capacity(config.repeats);
+    for _ in 0..config.repeats {
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let produced = run_zlema_kernel(input, period, &mut output);
+            black_box((produced, output[produced.saturating_sub(1)]));
+        }
+        samples.push(start.elapsed());
+    }
+
+    Ok(finish_kernel_probe(
+        "zlema",
+        input.len(),
+        calibration,
+        iterations,
+        samples,
+    ))
+}
+
+fn run_macd_kernel_probe(
+    scenario: &BenchmarkScenario<'_>,
+    config: &BenchmarkConfig,
+) -> Result<KernelProbeResult, IndicatorError> {
+    let input = &scenario.inputs[0];
+    let short_period = scenario.options[0] as usize;
+    let long_period = scenario.options[1] as usize;
+    let signal_period = scenario.options[2] as usize;
+    let output_len = input.len().saturating_sub(long_period.saturating_sub(1));
+    let mut macd = vec![0.0; output_len];
+    let mut signal = vec![0.0; output_len];
+    let mut hist = vec![0.0; output_len];
+    run_macd_kernel(
+        input,
+        short_period,
+        long_period,
+        signal_period,
+        &mut macd,
+        &mut signal,
+        &mut hist,
+    );
+
+    let calibration = calibrate_iterations(config, |runs| {
+        for _ in 0..runs {
+            let produced = run_macd_kernel(
+                input,
+                short_period,
+                long_period,
+                signal_period,
+                &mut macd,
+                &mut signal,
+                &mut hist,
+            );
+            black_box((produced, hist[produced.saturating_sub(1)]));
+        }
+        Ok(())
+    })?;
+    let iterations = calibration.iterations;
+    let mut samples = Vec::with_capacity(config.repeats);
+    for _ in 0..config.repeats {
+        let start = Instant::now();
+        for _ in 0..iterations {
+            let produced = run_macd_kernel(
+                input,
+                short_period,
+                long_period,
+                signal_period,
+                &mut macd,
+                &mut signal,
+                &mut hist,
+            );
+            black_box((produced, hist[produced.saturating_sub(1)]));
+        }
+        samples.push(start.elapsed());
+    }
+
+    Ok(finish_kernel_probe(
+        "macd",
+        input.len(),
+        calibration,
+        iterations,
+        samples,
+    ))
+}
+
 fn collect_stream_outputs(
     stream: &mut dyn crate::core::indicator::IndicatorStream,
     inputs: &[Vec<Real>],
@@ -522,6 +798,120 @@ fn coefficient_of_variation(stddev_ms: f64, median_ms: f64) -> f64 {
     } else {
         stddev_ms / median_ms
     }
+}
+
+fn run_ema_kernel(input: &[Real], multiplier: Real, output: &mut [Real]) -> usize {
+    if input.is_empty() {
+        return 0;
+    }
+
+    let mut value = input[0];
+    output[0] = value;
+    for (dst, &sample) in output.iter_mut().skip(1).zip(input.iter().skip(1)) {
+        value = (sample - value) * multiplier + value;
+        *dst = value;
+    }
+
+    input.len()
+}
+
+fn run_wilders_kernel(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() < period {
+        return 0;
+    }
+
+    let per = 1.0 / period as Real;
+    let mut sum = 0.0;
+    for &sample in &input[..period] {
+        sum += sample;
+    }
+
+    let mut value = sum / period as Real;
+    output[0] = value;
+    let mut out_index = 1usize;
+    for &sample in &input[period..] {
+        value = (sample - value) * per + value;
+        output[out_index] = value;
+        out_index += 1;
+    }
+
+    out_index
+}
+
+fn run_zlema_kernel(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    let lag = (period - 1) / 2;
+    let lookback = lag.saturating_sub(1);
+    if input.len() <= lookback {
+        return 0;
+    }
+
+    let per = 2.0 / (period as Real + 1.0);
+    if lag == 0 {
+        return run_ema_kernel(input, per, output);
+    }
+
+    let mut value = input[lag - 1];
+    output[0] = value;
+    let mut out_index = 1usize;
+    for index in lag..input.len() {
+        let current = input[index];
+        let lagged = input[index - lag];
+        value = ((current + (current - lagged)) - value) * per + value;
+        output[out_index] = value;
+        out_index += 1;
+    }
+
+    out_index
+}
+
+fn run_macd_kernel(
+    input: &[Real],
+    short_period: usize,
+    long_period: usize,
+    signal_period: usize,
+    macd: &mut [Real],
+    signal: &mut [Real],
+    hist: &mut [Real],
+) -> usize {
+    let lookback = long_period - 1;
+    if input.len() <= lookback {
+        return 0;
+    }
+
+    let (short_per, long_per) = if short_period == 12 && long_period == 26 {
+        (0.15, 0.075)
+    } else {
+        (
+            2.0 / (short_period as Real + 1.0),
+            2.0 / (long_period as Real + 1.0),
+        )
+    };
+    let signal_per = 2.0 / (signal_period as Real + 1.0);
+
+    let mut short_ema = input[0];
+    let mut long_ema = input[0];
+    let mut signal_ema = 0.0;
+    let mut out_index = 0usize;
+
+    for (index, &sample) in input.iter().enumerate().skip(1) {
+        short_ema = (sample - short_ema) * short_per + short_ema;
+        long_ema = (sample - long_ema) * long_per + long_ema;
+        let macd_value = short_ema - long_ema;
+
+        if index == long_period - 1 {
+            signal_ema = macd_value;
+        }
+
+        if index >= long_period - 1 {
+            signal_ema = (macd_value - signal_ema) * signal_per + signal_ema;
+            macd[out_index] = macd_value;
+            signal[out_index] = signal_ema;
+            hist[out_index] = macd_value - signal_ema;
+            out_index += 1;
+        }
+    }
+
+    out_index
 }
 
 fn build_options(option_names: &[&str], input_len: usize) -> Vec<Real> {
