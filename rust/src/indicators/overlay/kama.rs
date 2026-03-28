@@ -39,7 +39,7 @@ impl Indicator for Kama {
         }
 
         let mut output = vec![0.0; input.len() - period + 1];
-        let written = self.run_kernel(input, period, &mut output)?;
+        let written = self.run_kernel(input, period, &mut output);
         debug_assert_eq!(written, output.len());
         Ok(vec![output])
     }
@@ -58,7 +58,7 @@ impl Indicator for Kama {
         if input.len() < period {
             return Ok(0);
         }
-        self.run_kernel(input, period, &mut outputs[0][..output_len])
+        Ok(self.run_kernel(input, period, &mut outputs[0][..output_len]))
     }
 
     fn create_stream(
@@ -70,12 +70,7 @@ impl Indicator for Kama {
 }
 
 impl Kama {
-    fn run_kernel(
-        &self,
-        input: &[Real],
-        period: usize,
-        output: &mut [Real],
-    ) -> Result<usize, IndicatorError> {
+    fn run_kernel(&self, input: &[Real], period: usize, output: &mut [Real]) -> usize {
         let mut sum = 0.0;
         for index in 1..period {
             sum += (input[index] - input[index - 1]).abs();
@@ -96,13 +91,14 @@ impl Kama {
             } else {
                 1.0
             };
-            let sc = (er * (FAST_PER - SLOW_PER) + SLOW_PER).powi(2);
+            let alpha = er * (FAST_PER - SLOW_PER) + SLOW_PER;
+            let sc = alpha * alpha;
             kama += sc * (input[index] - kama);
             output[out_index] = kama;
             out_index += 1;
         }
 
-        Ok(out_index)
+        out_index
     }
 }
 
@@ -141,8 +137,23 @@ impl IndicatorStream for KamaStream {
 
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
-        let mut output = Vec::with_capacity(input.len());
+        let mut output = vec![0.0; input.len()];
+        let mut outputs = [&mut output[..]];
+        let produced = self.feed_in_place(inputs, &mut outputs)?;
+        output.truncate(produced);
+        Ok(vec![output])
+    }
 
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
+
+        let mut out_index = 0usize;
         for sample in input {
             if let Some(previous) = self.last_input {
                 let diff = (*sample - previous).abs();
@@ -160,7 +171,8 @@ impl IndicatorStream for KamaStream {
 
             if self.progress + 1 == self.period {
                 self.value = Some(*sample);
-                output.push(*sample);
+                outputs[0][out_index] = *sample;
+                out_index += 1;
             } else if self.progress + 1 > self.period {
                 let oldest = *self.prices.front().unwrap_or(sample);
                 let er = if self.diff_sum != 0.0 {
@@ -168,18 +180,20 @@ impl IndicatorStream for KamaStream {
                 } else {
                     1.0
                 };
-                let sc = (er * (FAST_PER - SLOW_PER) + SLOW_PER).powi(2);
+                let alpha = er * (FAST_PER - SLOW_PER) + SLOW_PER;
+                let sc = alpha * alpha;
                 let current = self.value.unwrap_or(*sample);
                 let next = current + sc * (*sample - current);
                 self.value = Some(next);
-                output.push(next);
+                outputs[0][out_index] = next;
+                out_index += 1;
             }
 
             self.last_input = Some(*sample);
             self.progress += 1;
         }
 
-        Ok(vec![output])
+        Ok(out_index)
     }
 }
 

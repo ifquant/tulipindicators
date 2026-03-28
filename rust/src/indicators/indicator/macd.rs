@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 use crate::indicators::shared::EmaState;
@@ -32,39 +34,46 @@ impl Indicator for Macd {
         let lookback = long_period - 1;
 
         let output_len = input.len().saturating_sub(lookback);
-        let mut macd = Vec::with_capacity(output_len);
-        let mut signal = Vec::with_capacity(output_len);
-        let mut hist = Vec::with_capacity(output_len);
-
-        if input.len() <= lookback {
-            return Ok(vec![macd, signal, hist]);
-        }
-
-        let (short_per, long_per) = ema_pair(short_period, long_period);
-        let signal_per = 2.0 / (signal_period as Real + 1.0);
-
-        let mut short_ema = input[0];
-        let mut long_ema = input[0];
-        let mut signal_ema = 0.0;
-
-        for (index, sample) in input.iter().enumerate().skip(1) {
-            short_ema = (*sample - short_ema) * short_per + short_ema;
-            long_ema = (*sample - long_ema) * long_per + long_ema;
-            let macd_value = short_ema - long_ema;
-
-            if index == long_period - 1 {
-                signal_ema = macd_value;
-            }
-
-            if index >= long_period - 1 {
-                signal_ema = (macd_value - signal_ema) * signal_per + signal_ema;
-                macd.push(macd_value);
-                signal.push(signal_ema);
-                hist.push(macd_value - signal_ema);
-            }
-        }
-
+        let mut macd = vec![0.0; output_len];
+        let mut signal = vec![0.0; output_len];
+        let mut hist = vec![0.0; output_len];
+        let produced = run_macd_batch(
+            input,
+            short_period,
+            long_period,
+            signal_period,
+            &mut macd,
+            &mut signal,
+            &mut hist,
+        );
+        debug_assert_eq!(produced, output_len);
         Ok(vec![macd, signal, hist])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let (short_period, long_period, signal_period) = parse_options(options)?;
+        let output_len = input.len().saturating_sub(long_period - 1);
+        validate_output_slices(&METADATA, outputs, 3)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        ensure_output_len(&METADATA, outputs[1].len(), output_len, 1)?;
+        ensure_output_len(&METADATA, outputs[2].len(), output_len, 2)?;
+        let (macd_slice, rest) = outputs.split_at_mut(1);
+        let (signal_slice, hist_slice) = rest.split_at_mut(1);
+        Ok(run_macd_batch(
+            input,
+            short_period,
+            long_period,
+            signal_period,
+            &mut macd_slice[0][..output_len],
+            &mut signal_slice[0][..output_len],
+            &mut hist_slice[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -110,9 +119,28 @@ impl IndicatorStream for MacdStream {
 
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
-        let mut macd = Vec::new();
-        let mut signal = Vec::new();
-        let mut hist = Vec::new();
+        let mut macd = vec![0.0; input.len()];
+        let mut signal = vec![0.0; input.len()];
+        let mut hist = vec![0.0; input.len()];
+        let mut outputs = [&mut macd[..], &mut signal[..], &mut hist[..]];
+        let produced = self.feed_in_place(inputs, &mut outputs)?;
+        macd.truncate(produced);
+        signal.truncate(produced);
+        hist.truncate(produced);
+        Ok(vec![macd, signal, hist])
+    }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 3)?;
+        ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
+        ensure_output_len(&METADATA, outputs[1].len(), input.len(), 1)?;
+        ensure_output_len(&METADATA, outputs[2].len(), input.len(), 2)?;
+        let mut out_index = 0usize;
 
         for sample in input {
             let short_value = self.short_ema.feed(*sample);
@@ -135,16 +163,17 @@ impl IndicatorStream for MacdStream {
                         None => macd_value,
                     };
                     self.signal_ema = Some(signal_value);
-                    macd.push(macd_value);
-                    signal.push(signal_value);
-                    hist.push(macd_value - signal_value);
+                    outputs[0][out_index] = macd_value;
+                    outputs[1][out_index] = signal_value;
+                    outputs[2][out_index] = macd_value - signal_value;
+                    out_index += 1;
                 }
             }
 
             self.progress += 1;
         }
 
-        Ok(vec![macd, signal, hist])
+        Ok(out_index)
     }
 }
 
@@ -175,4 +204,47 @@ fn ema_pair(short_period: usize, long_period: usize) -> (Real, Real) {
             2.0 / (long_period as Real + 1.0),
         )
     }
+}
+
+fn run_macd_batch(
+    input: &[Real],
+    short_period: usize,
+    long_period: usize,
+    signal_period: usize,
+    macd: &mut [Real],
+    signal: &mut [Real],
+    hist: &mut [Real],
+) -> usize {
+    let lookback = long_period - 1;
+    if input.len() <= lookback {
+        return 0;
+    }
+
+    let (short_per, long_per) = ema_pair(short_period, long_period);
+    let signal_per = 2.0 / (signal_period as Real + 1.0);
+
+    let mut short_ema = input[0];
+    let mut long_ema = input[0];
+    let mut signal_ema = 0.0;
+    let mut out_index = 0usize;
+
+    for (index, sample) in input.iter().enumerate().skip(1) {
+        short_ema = (*sample - short_ema) * short_per + short_ema;
+        long_ema = (*sample - long_ema) * long_per + long_ema;
+        let macd_value = short_ema - long_ema;
+
+        if index == long_period - 1 {
+            signal_ema = macd_value;
+        }
+
+        if index >= long_period - 1 {
+            signal_ema = (macd_value - signal_ema) * signal_per + signal_ema;
+            macd[out_index] = macd_value;
+            signal[out_index] = signal_ema;
+            hist[out_index] = macd_value - signal_ema;
+            out_index += 1;
+        }
+    }
+
+    out_index
 }

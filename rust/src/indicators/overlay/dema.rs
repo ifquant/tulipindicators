@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 use crate::indicators::shared::EmaState;
@@ -30,32 +32,24 @@ impl Indicator for Dema {
         let input = single_input(METADATA.name, inputs)?;
         let period = parse_period(options)?;
         let lookback = (period - 1) * 2;
-        let mut output = Vec::with_capacity(input.len().saturating_sub(lookback));
-
-        if input.len() <= lookback {
-            return Ok(vec![output]);
-        }
-
-        let per = ema_multiplier(period);
-        let per1 = 1.0 - per;
-
-        let mut ema = input[0];
-        let mut ema2 = ema;
-
-        for (index, sample) in input.iter().enumerate() {
-            ema = ema * per1 + sample * per;
-            if index == period - 1 {
-                ema2 = ema;
-            }
-            if index >= period - 1 {
-                ema2 = ema2 * per1 + ema * per;
-                if index >= lookback {
-                    output.push(ema * 2.0 - ema2);
-                }
-            }
-        }
-
+        let mut output = vec![0.0; input.len().saturating_sub(lookback)];
+        let produced = run_dema_batch(input, period, &mut output);
+        debug_assert_eq!(produced, output.len());
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = input.len().saturating_sub((period - 1) * 2);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_dema_batch(input, period, &mut outputs[0][..output_len]))
     }
 
     fn create_stream(
@@ -97,8 +91,23 @@ impl IndicatorStream for DemaStream {
 
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
-        let mut output = Vec::new();
+        let mut output = vec![0.0; input.len()];
+        let mut outputs = [&mut output[..]];
+        let produced = self.feed_in_place(inputs, &mut outputs)?;
+        output.truncate(produced);
+        Ok(vec![output])
+    }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
         let lookback = (self.period - 1) * 2;
+        let mut out_index = 0usize;
 
         for sample in input {
             let ema1 = self.ema1.feed(*sample);
@@ -107,14 +116,15 @@ impl IndicatorStream for DemaStream {
             if index >= self.period - 1 {
                 let ema2 = self.ema2.feed(ema1);
                 if index >= lookback {
-                    output.push(ema1 * 2.0 - ema2);
+                    outputs[0][out_index] = ema1 * 2.0 - ema2;
+                    out_index += 1;
                 }
             }
 
             self.progress += 1;
         }
 
-        Ok(vec![output])
+        Ok(out_index)
     }
 }
 
@@ -125,4 +135,34 @@ fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {
 
 fn ema_multiplier(period: usize) -> Real {
     2.0 / (period as Real + 1.0)
+}
+
+fn run_dema_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    let lookback = (period - 1) * 2;
+    if input.len() <= lookback {
+        return 0;
+    }
+
+    let per = ema_multiplier(period);
+    let per1 = 1.0 - per;
+
+    let mut ema = input[0];
+    let mut ema2 = ema;
+    let mut out_index = 0usize;
+
+    for (index, sample) in input.iter().enumerate() {
+        ema = ema * per1 + sample * per;
+        if index == period - 1 {
+            ema2 = ema;
+        }
+        if index >= period - 1 {
+            ema2 = ema2 * per1 + ema * per;
+            if index >= lookback {
+                output[out_index] = ema * 2.0 - ema2;
+                out_index += 1;
+            }
+        }
+    }
+
+    out_index
 }

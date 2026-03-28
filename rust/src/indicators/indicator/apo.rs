@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, single_input};
 use crate::indicators::shared::EmaState;
@@ -29,24 +31,29 @@ impl Indicator for Apo {
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
         let (short_period, long_period) = parse_options(options)?;
-        let mut output = Vec::with_capacity(input.len().saturating_sub(1));
-
-        if input.len() <= 1 {
-            return Ok(vec![output]);
-        }
-
-        let short_per = ema_multiplier(short_period);
-        let long_per = ema_multiplier(long_period);
-        let mut short_ema = input[0];
-        let mut long_ema = input[0];
-
-        for &sample in &input[1..] {
-            short_ema = (sample - short_ema) * short_per + short_ema;
-            long_ema = (sample - long_ema) * long_per + long_ema;
-            output.push(short_ema - long_ema);
-        }
-
+        let mut output = vec![0.0; input.len().saturating_sub(1)];
+        let produced = run_apo_batch(input, short_period, long_period, &mut output);
+        debug_assert_eq!(produced, output.len());
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let (short_period, long_period) = parse_options(options)?;
+        let output_len = input.len().saturating_sub(1);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_apo_batch(
+            input,
+            short_period,
+            long_period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -85,18 +92,35 @@ impl IndicatorStream for ApoStream {
 
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
-        let mut output = Vec::with_capacity(input.len());
+        let mut output = vec![0.0; input.len()];
+        let mut outputs = [&mut output[..]];
+        let produced = self.feed_in_place(inputs, &mut outputs)?;
+        output.truncate(produced);
 
+        Ok(vec![output])
+    }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
+
+        let mut out_index = 0usize;
         for &sample in input {
             let short_ema = self.short_ema.feed(sample);
             let long_ema = self.long_ema.feed(sample);
             if self.progress >= 1 {
-                output.push(short_ema - long_ema);
+                outputs[0][out_index] = short_ema - long_ema;
+                out_index += 1;
             }
             self.progress += 1;
         }
 
-        Ok(vec![output])
+        Ok(out_index)
     }
 }
 
@@ -136,4 +160,30 @@ fn parse_period(
 
 fn ema_multiplier(period: usize) -> Real {
     2.0 / (period as Real + 1.0)
+}
+
+fn run_apo_batch(
+    input: &[Real],
+    short_period: usize,
+    long_period: usize,
+    output: &mut [Real],
+) -> usize {
+    if input.len() <= 1 {
+        return 0;
+    }
+
+    let short_per = ema_multiplier(short_period);
+    let long_per = ema_multiplier(long_period);
+    let mut short_ema = input[0];
+    let mut long_ema = input[0];
+    let mut out_index = 0usize;
+
+    for &sample in &input[1..] {
+        short_ema = (sample - short_ema) * short_per + short_ema;
+        long_ema = (sample - long_ema) * long_per + long_ema;
+        output[out_index] = short_ema - long_ema;
+        out_index += 1;
+    }
+
+    out_index
 }
