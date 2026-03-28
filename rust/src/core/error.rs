@@ -24,6 +24,9 @@ pub enum IndicatorError {
         expected: usize,
         actual: usize,
     },
+    MissingStreamSupport {
+        indicator: &'static str,
+    },
     InputLengthMismatch {
         indicator: &'static str,
         expected: usize,
@@ -35,6 +38,10 @@ pub enum IndicatorError {
         output_index: usize,
         expected: usize,
         actual: usize,
+    },
+    InternalInvariant {
+        indicator: &'static str,
+        reason: &'static str,
     },
 }
 
@@ -68,6 +75,9 @@ impl fmt::Display for IndicatorError {
                 expected,
                 actual,
             } => write!(f, "{indicator}: expected {expected} output buffers, got {actual}"),
+            Self::MissingStreamSupport { indicator } => {
+                write!(f, "{indicator}: stream benchmark requested for indicator without stream support")
+            }
             Self::InputLengthMismatch {
                 indicator,
                 expected,
@@ -86,6 +96,9 @@ impl fmt::Display for IndicatorError {
                 f,
                 "{indicator}: output buffer {output_index} has length {actual}, expected at least {expected}"
             ),
+            Self::InternalInvariant { indicator, reason } => {
+                write!(f, "{indicator}: internal invariant violated: {reason}")
+            }
         }
     }
 }

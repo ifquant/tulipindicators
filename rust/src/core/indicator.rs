@@ -21,11 +21,13 @@ pub trait Indicator: Sync {
         options: &[Real],
         outputs: &mut [&mut [Real]],
     ) -> Result<usize, IndicatorError> {
+        let metadata = self.metadata();
         let computed = self.run(inputs, options)?;
-        validate_output_slices(self.metadata(), outputs, computed.len())?;
+        validate_output_slices(metadata, outputs, metadata.output_names.len())?;
+        validate_computed_outputs(metadata, &computed)?;
         for (output_index, values) in computed.iter().enumerate() {
             ensure_output_len(
-                self.metadata(),
+                metadata,
                 outputs[output_index].len(),
                 values.len(),
                 output_index,
@@ -64,6 +66,20 @@ pub fn validate_output_slices(
             indicator: metadata.name,
             expected,
             actual: outputs.len(),
+        });
+    }
+    Ok(())
+}
+
+pub fn validate_computed_outputs(
+    metadata: &IndicatorMetadata,
+    computed: &[Vec<Real>],
+) -> Result<(), IndicatorError> {
+    let expected = metadata.output_names.len();
+    if computed.len() != expected {
+        return Err(IndicatorError::InternalInvariant {
+            indicator: metadata.name,
+            reason: "indicator returned an unexpected number of output series",
         });
     }
     Ok(())

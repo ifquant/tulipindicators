@@ -240,7 +240,12 @@ fn run_batch_benchmark(
         let produced = scenario
             .indicator
             .run_in_place(&inputs, &scenario.options, &mut outputs)?;
-        debug_assert_eq!(produced, output_len);
+        if produced != output_len {
+            return Err(IndicatorError::InternalInvariant {
+                indicator: metadata.name,
+                reason: "batch benchmark warmup produced an unexpected output length",
+            });
+        }
     }
 
     let start = Instant::now();
@@ -278,7 +283,9 @@ fn run_stream_benchmark(
     let mut sample_stream = scenario
         .indicator
         .create_stream(&scenario.options)?
-        .expect("stream benchmark requested for indicator without stream");
+        .ok_or(IndicatorError::MissingStreamSupport {
+            indicator: scenario.indicator.metadata().name,
+        })?;
     let total_outputs = collect_stream_outputs(
         sample_stream.as_mut(),
         &scenario.inputs,
@@ -291,7 +298,9 @@ fn run_stream_benchmark(
         let mut stream = scenario
             .indicator
             .create_stream(&scenario.options)?
-            .expect("stream benchmark requested for indicator without stream");
+            .ok_or(IndicatorError::MissingStreamSupport {
+                indicator: scenario.indicator.metadata().name,
+            })?;
         let outputs =
             collect_stream_outputs(stream.as_mut(), &scenario.inputs, config.stream_chunk_size)?;
         black_box(outputs);
