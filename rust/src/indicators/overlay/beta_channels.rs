@@ -34,6 +34,15 @@ const KC_METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["kc_lower", "kc_middle", "kc_upper"],
 };
 
+const CE_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "ce",
+    full_name: "Chandelier Exit",
+    category: IndicatorCategory::Overlay,
+    input_names: &["high", "low", "close"],
+    option_names: &["period", "coef"],
+    output_names: &["ce_high", "ce_low"],
+};
+
 const PBANDS_METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "pbands",
     full_name: "Projection Bands",
@@ -67,6 +76,8 @@ pub struct Abands;
 pub struct Dc;
 #[derive(Debug, Clone, Copy)]
 pub struct Kc;
+#[derive(Debug, Clone, Copy)]
+pub struct Ce;
 #[derive(Debug, Clone, Copy)]
 pub struct Pbands;
 #[derive(Debug, Clone, Copy)]
@@ -140,6 +151,28 @@ impl Indicator for Kc {
     }
 }
 
+impl Indicator for Ce {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &CE_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        Ok(parse_period_coef(CE_METADATA.name, options)?.0 - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let mut stream = CeStream::new(options)?;
+        stream.feed(inputs)
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        Ok(Some(Box::new(CeStream::new(options)?)))
+    }
+}
+
 impl Indicator for Pbands {
     fn metadata(&self) -> &'static IndicatorMetadata {
         &PBANDS_METADATA
@@ -159,6 +192,92 @@ impl Indicator for Pbands {
         options: &[Real],
     ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
         Ok(Some(Box::new(PbandsStream::new(options)?)))
+    }
+}
+
+struct CeStream {
+    period: usize,
+    coef: Real,
+    progress: usize,
+    atr_sum: Real,
+    atr: Option<Real>,
+    previous_close: Option<Real>,
+    high_queue: MonotonicQueue,
+    low_queue: MonotonicQueue,
+}
+
+impl CeStream {
+    fn new(options: &[Real]) -> Result<Self, IndicatorError> {
+        let (period, coef) = parse_period_coef(CE_METADATA.name, options)?;
+        Ok(Self {
+            period,
+            coef,
+            progress: 0,
+            atr_sum: 0.0,
+            atr: None,
+            previous_close: None,
+            high_queue: MonotonicQueue::new(ExtremaKind::Max),
+            low_queue: MonotonicQueue::new(ExtremaKind::Min),
+        })
+    }
+}
+
+impl IndicatorStream for CeStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &CE_METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.progress
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let (high, low, close) = triple_input(CE_METADATA.name, inputs)?;
+        let mut ce_high = Vec::new();
+        let mut ce_low = Vec::new();
+
+        for ((&high_value, &low_value), &close_value) in high.iter().zip(low).zip(close) {
+            self.high_queue.push(self.progress, high_value);
+            self.low_queue.push(self.progress, low_value);
+            let min_index = self.progress.saturating_add(1).saturating_sub(self.period);
+            self.high_queue.evict_before(min_index);
+            self.low_queue.evict_before(min_index);
+
+            match (self.progress, self.previous_close, self.atr) {
+                (0, _, _) => {
+                    self.atr_sum = high_value - low_value;
+                    if self.period == 1 {
+                        let atr = self.atr_sum;
+                        self.atr = Some(atr);
+                        ce_high.push(self.high_queue.front_value() - self.coef * atr);
+                        ce_low.push(self.low_queue.front_value() + self.coef * atr);
+                    }
+                }
+                (_, Some(previous_close), None) => {
+                    self.atr_sum += true_range(high_value, low_value, previous_close);
+                    if self.progress + 1 == self.period {
+                        let atr = self.atr_sum / self.period as Real;
+                        self.atr = Some(atr);
+                        ce_high.push(self.high_queue.front_value() - self.coef * atr);
+                        ce_low.push(self.low_queue.front_value() + self.coef * atr);
+                    }
+                }
+                (_, Some(previous_close), Some(current_atr)) => {
+                    let tr = true_range(high_value, low_value, previous_close);
+                    let period = self.period as Real;
+                    let atr = current_atr * (period - 1.0) / period + tr / period;
+                    self.atr = Some(atr);
+                    ce_high.push(self.high_queue.front_value() - self.coef * atr);
+                    ce_low.push(self.low_queue.front_value() + self.coef * atr);
+                }
+                _ => unreachable!("previous close should exist after the first sample"),
+            }
+
+            self.previous_close = Some(close_value);
+            self.progress += 1;
+        }
+
+        Ok(vec![ce_high, ce_low])
     }
 }
 
@@ -610,4 +729,22 @@ fn parse_period_multiplier(
         });
     }
     Ok((period, multiple))
+}
+
+fn parse_period_coef(
+    name: &'static str,
+    options: &[Real],
+) -> Result<(usize, Real), IndicatorError> {
+    expect_option_count(name, options, 2)?;
+    let period = parse_usize_option(name, options, 0, "period", 1)?;
+    let coef = options[1];
+    if !coef.is_finite() {
+        return Err(IndicatorError::InvalidOption {
+            indicator: name,
+            option: "coef",
+            value: coef,
+            reason: "expected a finite value",
+        });
+    }
+    Ok((period, coef))
 }

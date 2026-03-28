@@ -2,13 +2,13 @@ use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
     Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmf, Cmo, Copp, Cvi, Di, Dm,
     Dpo, Dx, Emv, Fi, Fisher, Fosc, Kst, Kvo, LinReg, LinRegIntercept, LinRegSlope, Macd, MarketFi,
-    Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Ppo, Psar, Pvi, Qstick, Rmi, Roc, Rocr, Rsi,
-    StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf, Tsi, UltOsc, Var, Vhf, Volatility, Vosc, Wad,
-    WillR,
+    Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo, Psar, Pvi, Qstick, Rmi, Roc, Rocr,
+    Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf, Tsi, UltOsc, Var, Vhf,
+    Volatility, Vosc, Wad, WillR,
 };
 use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, Min, Sum};
 use crate::indicators::overlay::{
-    Abands, Alma, AvgPrice, Bbands, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, MedPrice, Pbands, Pc,
+    Abands, Alma, AvgPrice, Bbands, Ce, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, MedPrice, Pbands, Pc,
     Rmta, Sma, Tema, Trima, TypPrice, Vidya, Vwap, Vwma, WcPrice, Wilders, Wma, Zlema,
 };
 use crate::indicators::simple::{
@@ -35,6 +35,7 @@ pub static ATAN: Atan = Atan;
 pub static AVGPRICE: AvgPrice = AvgPrice;
 pub static BBANDS: Bbands = Bbands;
 pub static BOP: Bop = Bop;
+pub static CE: Ce = Ce;
 pub static CCI: Cci = Cci;
 pub static CEIL: Ceil = Ceil;
 pub static CMF: Cmf = Cmf;
@@ -87,6 +88,7 @@ pub static NATR: Natr = Natr;
 pub static NVI: Nvi = Nvi;
 pub static OBV: Obv = Obv;
 pub static PFE: Pfe = Pfe;
+pub static POSC: Posc = Posc;
 pub static PPO: Ppo = Ppo;
 pub static PBANDS: Pbands = Pbands;
 pub static PC: Pc = Pc;
@@ -98,10 +100,12 @@ pub static ROC: Roc = Roc;
 pub static ROCR: Rocr = Rocr;
 pub static RMTA: Rmta = Rmta;
 pub static RSI: Rsi = Rsi;
+pub static RVI: Rvi = Rvi;
 pub static ROUND: Round = Round;
 pub static SMA: Sma = Sma;
 pub static SIN: Sin = Sin;
 pub static SINH: Sinh = Sinh;
+pub static SMI: Smi = Smi;
 pub static SQRT: Sqrt = Sqrt;
 pub static STDERR: StdErr = StdErr;
 pub static STDDEV: StdDev = StdDev;
@@ -137,7 +141,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 120] {
+pub fn all() -> [&'static dyn Indicator; 124] {
     [
         &ABS,
         &ACOS,
@@ -158,6 +162,7 @@ pub fn all() -> [&'static dyn Indicator; 120] {
         &AVGPRICE,
         &BBANDS,
         &BOP,
+        &CE,
         &CCI,
         &CEIL,
         &CMF,
@@ -210,6 +215,7 @@ pub fn all() -> [&'static dyn Indicator; 120] {
         &NVI,
         &OBV,
         &PFE,
+        &POSC,
         &PPO,
         &PBANDS,
         &PC,
@@ -220,11 +226,13 @@ pub fn all() -> [&'static dyn Indicator; 120] {
         &ROC,
         &ROCR,
         &RMTA,
-        &ROUND,
         &RSI,
+        &RVI,
+        &ROUND,
         &SIN,
         &SINH,
         &SMA,
+        &SMI,
         &SQRT,
         &STDERR,
         &STDDEV,
@@ -283,6 +291,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "avgprice" => Some(&AVGPRICE),
         "bbands" => Some(&BBANDS),
         "bop" => Some(&BOP),
+        "ce" => Some(&CE),
         "cci" => Some(&CCI),
         "ceil" => Some(&CEIL),
         "cmf" => Some(&CMF),
@@ -335,6 +344,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "nvi" => Some(&NVI),
         "obv" => Some(&OBV),
         "pfe" => Some(&PFE),
+        "posc" => Some(&POSC),
         "ppo" => Some(&PPO),
         "pbands" => Some(&PBANDS),
         "pc" => Some(&PC),
@@ -346,10 +356,12 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "rocr" => Some(&ROCR),
         "rmta" => Some(&RMTA),
         "rsi" => Some(&RSI),
+        "rvi" => Some(&RVI),
         "round" => Some(&ROUND),
         "sma" => Some(&SMA),
         "sin" => Some(&SIN),
         "sinh" => Some(&SINH),
+        "smi" => Some(&SMI),
         "sqrt" => Some(&SQRT),
         "stderr" => Some(&STDERR),
         "stddev" => Some(&STDDEV),

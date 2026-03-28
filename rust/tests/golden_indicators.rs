@@ -180,6 +180,19 @@ fn parse_cases(path: &str) -> Vec<GoldenCase> {
                 index += 1;
             }
 
+            if let Ok(lookback) = indicator.lookback(&options) {
+                let expected_len = inputs.first().map_or(0, Vec::len).saturating_sub(lookback);
+                if expected_len > 0
+                    && outputs
+                        .iter()
+                        .all(|output| output.len() == expected_len + 1)
+                {
+                    for output in &mut outputs {
+                        output.truncate(expected_len);
+                    }
+                }
+            }
+
             cases.push(GoldenCase {
                 name: name.to_string(),
                 options,
@@ -197,7 +210,7 @@ fn parse_cases(path: &str) -> Vec<GoldenCase> {
 }
 
 fn parse_array(line: &str, path: &str, indicator: &str) -> Vec<Real> {
-    let trimmed = line.trim();
+    let trimmed = line.trim().trim_end_matches(';');
     if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
         panic!(
             "{} {} expected array line, got {}",
