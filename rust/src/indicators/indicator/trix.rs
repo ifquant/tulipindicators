@@ -158,25 +158,25 @@ fn run_trix_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
     let mut ema3 = 0.0;
 
     for (index, sample) in input.iter().enumerate().take(start).skip(1) {
-        ema1 = (*sample - ema1) * per + ema1;
+        ema1 = (*sample - ema1).mul_add(per, ema1);
         if index == period - 1 {
             ema2 = ema1;
         } else if index > period - 1 {
-            ema2 = (ema1 - ema2) * per + ema2;
+            ema2 = (ema1 - ema2).mul_add(per, ema2);
             if index == period * 2 - 2 {
                 ema3 = ema2;
             } else if index > period * 2 - 2 {
-                ema3 = (ema2 - ema3) * per + ema3;
+                ema3 = (ema2 - ema3).mul_add(per, ema3);
             }
         }
     }
 
     let mut out_index = 0usize;
     for sample in input.iter().skip(start) {
-        ema1 = (*sample - ema1) * per + ema1;
-        ema2 = (ema1 - ema2) * per + ema2;
+        ema1 = (*sample - ema1).mul_add(per, ema1);
+        ema2 = (ema1 - ema2).mul_add(per, ema2);
         let last = ema3;
-        ema3 = (ema2 - ema3) * per + ema3;
+        ema3 = (ema2 - ema3).mul_add(per, ema3);
         output[out_index] = (ema3 - last) / ema3 * 100.0;
         out_index += 1;
     }
