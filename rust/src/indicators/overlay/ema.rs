@@ -30,21 +30,9 @@ impl Indicator for Ema {
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
         let period = parse_period(options, METADATA.name)?;
-        let mut output = Vec::with_capacity(input.len());
-
-        if input.is_empty() {
-            return Ok(vec![output]);
-        }
-
-        let multiplier = 2.0 / (period as Real + 1.0);
-        let mut value = input[0];
-        output.push(value);
-
-        for sample in &input[1..] {
-            value = (*sample - value) * multiplier + value;
-            output.push(value);
-        }
-
+        let mut output = vec![0.0; input.len()];
+        let produced = run_ema_batch(input, 2.0 / (period as Real + 1.0), &mut output);
+        debug_assert_eq!(produced, input.len());
         Ok(vec![output])
     }
 
@@ -58,21 +46,11 @@ impl Indicator for Ema {
         let period = parse_period(options, METADATA.name)?;
         validate_output_slices(&METADATA, outputs, 1)?;
         ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
-
-        if input.is_empty() {
-            return Ok(0);
-        }
-
-        let multiplier = 2.0 / (period as Real + 1.0);
-        let mut value = input[0];
-        outputs[0][0] = value;
-
-        for (dst, &sample) in outputs[0][1..input.len()].iter_mut().zip(input[1..].iter()) {
-            value = (sample - value) * multiplier + value;
-            *dst = value;
-        }
-
-        Ok(input.len())
+        Ok(run_ema_batch(
+            input,
+            2.0 / (period as Real + 1.0),
+            &mut outputs[0][..input.len()],
+        ))
     }
 
     fn create_stream(
@@ -111,18 +89,9 @@ impl IndicatorStream for EmaStream {
 
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
-        let mut output = Vec::with_capacity(input.len());
-
-        for sample in input {
-            let value = match self.last {
-                Some(last) => (*sample - last) * self.multiplier + last,
-                None => *sample,
-            };
-            self.last = Some(value);
-            self.progress += 1;
-            output.push(value);
-        }
-
+        let mut output = vec![0.0; input.len()];
+        let produced = self.feed_in_place(inputs, &mut [&mut output])?;
+        debug_assert_eq!(produced, input.len());
         Ok(vec![output])
     }
 
@@ -134,21 +103,82 @@ impl IndicatorStream for EmaStream {
         let input = single_input(METADATA.name, inputs)?;
         validate_output_slices(&METADATA, outputs, 1)?;
         ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
-
-        let mut out_index = 0usize;
-        for &sample in input {
-            let value = match self.last {
-                Some(last) => (sample - last) * self.multiplier + last,
-                None => sample,
-            };
-            self.last = Some(value);
-            self.progress += 1;
-            outputs[0][out_index] = value;
-            out_index += 1;
+        if input.is_empty() {
+            return Ok(0);
         }
 
-        Ok(out_index)
+        let mut input_ptr = input.as_ptr();
+        let mut out_ptr = outputs[0].as_mut_ptr();
+        let mut produced = 0usize;
+
+        let mut value = match self.last {
+            Some(last) => {
+                let sample = unsafe { *input_ptr };
+                unsafe {
+                    *out_ptr = (sample - last) * self.multiplier + last;
+                    value_from_ptr(out_ptr)
+                }
+            }
+            None => {
+                let sample = unsafe { *input_ptr };
+                unsafe { *out_ptr = sample };
+                sample
+            }
+        };
+        self.last = Some(value);
+        self.progress += 1;
+        produced += 1;
+
+        unsafe {
+            input_ptr = input_ptr.add(1);
+            out_ptr = out_ptr.add(1);
+        }
+
+        for _ in 1..input.len() {
+            let sample = unsafe { *input_ptr };
+            value = (sample - value) * self.multiplier + value;
+            unsafe {
+                *out_ptr = value;
+                input_ptr = input_ptr.add(1);
+                out_ptr = out_ptr.add(1);
+            }
+            self.last = Some(value);
+            self.progress += 1;
+            produced += 1;
+        }
+
+        Ok(produced)
     }
+}
+
+fn run_ema_batch(input: &[Real], multiplier: Real, output: &mut [Real]) -> usize {
+    if input.is_empty() {
+        return 0;
+    }
+
+    debug_assert!(output.len() >= input.len());
+
+    let mut value = input[0];
+    unsafe {
+        let mut input_ptr = input.as_ptr().add(1);
+        let mut out_ptr = output.as_mut_ptr();
+        *out_ptr = value;
+        out_ptr = out_ptr.add(1);
+
+        for _ in 1..input.len() {
+            let sample = *input_ptr;
+            value = (sample - value) * multiplier + value;
+            *out_ptr = value;
+            input_ptr = input_ptr.add(1);
+            out_ptr = out_ptr.add(1);
+        }
+    }
+
+    input.len()
+}
+
+unsafe fn value_from_ptr(ptr: *const Real) -> Real {
+    unsafe { *ptr }
 }
 
 fn parse_period(options: &[Real], indicator: &'static str) -> Result<usize, IndicatorError> {
