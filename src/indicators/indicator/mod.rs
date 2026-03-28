@@ -1,11 +1,23 @@
+mod adx;
+mod adxr;
 mod atr;
+mod di;
+mod dm;
+mod dx;
 mod macd;
 mod rsi;
 mod stoch;
+mod stochrsi;
 mod trix;
 
+pub use adx::Adx;
+pub use adxr::Adxr;
 pub use atr::Atr;
+pub use di::Di;
+pub use dm::Dm;
+pub use dx::Dx;
 pub use macd::Macd;
 pub use rsi::Rsi;
 pub use stoch::Stoch;
+pub use stochrsi::StochRsi;
 pub use trix::Trix;

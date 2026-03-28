@@ -2,7 +2,7 @@ use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
-use std::collections::VecDeque;
+use crate::indicators::shared::{ExtremaKind, MonotonicQueue, RingSum};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "stoch",
@@ -104,15 +104,6 @@ impl Indicator for Stoch {
     }
 }
 
-#[derive(Debug, Clone)]
-struct RingSum {
-    values: Vec<Real>,
-    capacity: usize,
-    index: usize,
-    len: usize,
-    sum: Real,
-}
-
 struct StochStream {
     k_period: usize,
     k_slow: usize,
@@ -191,86 +182,6 @@ impl IndicatorStream for StochStream {
         }
 
         Ok(vec![stoch, stoch_ma])
-    }
-}
-
-enum ExtremaKind {
-    Max,
-    Min,
-}
-
-struct MonotonicQueue {
-    kind: ExtremaKind,
-    values: VecDeque<(usize, Real)>,
-}
-
-impl MonotonicQueue {
-    fn new(kind: ExtremaKind) -> Self {
-        Self {
-            kind,
-            values: VecDeque::new(),
-        }
-    }
-
-    fn push(&mut self, index: usize, value: Real) {
-        while let Some((_, tail)) = self.values.back().copied() {
-            let should_pop = match self.kind {
-                ExtremaKind::Max => value >= tail,
-                ExtremaKind::Min => value <= tail,
-            };
-            if should_pop {
-                self.values.pop_back();
-            } else {
-                break;
-            }
-        }
-        self.values.push_back((index, value));
-    }
-
-    fn evict_before(&mut self, min_index: usize) {
-        while let Some((index, _)) = self.values.front().copied() {
-            if index < min_index {
-                self.values.pop_front();
-            } else {
-                break;
-            }
-        }
-    }
-
-    fn front_value(&self) -> Real {
-        self.values
-            .front()
-            .map(|(_, value)| *value)
-            .expect("monotonic queue should not be empty")
-    }
-}
-
-impl RingSum {
-    fn new(capacity: usize) -> Self {
-        Self {
-            values: vec![0.0; capacity],
-            capacity,
-            index: 0,
-            len: 0,
-            sum: 0.0,
-        }
-    }
-
-    fn push(&mut self, value: Real) {
-        if self.len < self.capacity {
-            self.values[self.index] = value;
-            self.sum += value;
-            self.len += 1;
-        } else {
-            self.sum -= self.values[self.index];
-            self.values[self.index] = value;
-            self.sum += value;
-        }
-
-        self.index += 1;
-        if self.index == self.capacity {
-            self.index = 0;
-        }
     }
 }
 

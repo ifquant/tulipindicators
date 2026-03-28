@@ -41,6 +41,25 @@ pub fn single_input<'a>(
     Ok(inputs[0])
 }
 
+pub fn double_input<'a>(
+    indicator: &'static str,
+    inputs: &'a [&'a [Real]],
+) -> Result<(&'a [Real], &'a [Real]), IndicatorError> {
+    expect_input_count(indicator, inputs, 2)?;
+    let expected = inputs[0].len();
+
+    if inputs[1].len() != expected {
+        return Err(IndicatorError::InputLengthMismatch {
+            indicator,
+            expected,
+            actual: inputs[1].len(),
+            input_index: 1,
+        });
+    }
+
+    Ok((inputs[0], inputs[1]))
+}
+
 pub fn triple_input<'a>(
     indicator: &'static str,
     inputs: &'a [&'a [Real]],
