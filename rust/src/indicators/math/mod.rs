@@ -86,6 +86,15 @@ const MAX_METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["max"],
 };
 
+const MIDPOINT_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "midpoint",
+    full_name: "Midpoint Over Period",
+    category: IndicatorCategory::Math,
+    input_names: &["real"],
+    option_names: &["period"],
+    output_names: &["midpoint"],
+};
+
 const MIN_METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "min",
     full_name: "Minimum In Period",
@@ -320,6 +329,8 @@ impl IndicatorStream for CrossoverStream {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Decay;
+#[derive(Debug, Clone, Copy)]
+pub struct MidPoint;
 
 impl Indicator for Decay {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -550,6 +561,128 @@ impl Indicator for Lag {
             progress: 0,
         })))
     }
+}
+
+impl Indicator for MidPoint {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MIDPOINT_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        Ok(parse_positive_period(MIDPOINT_METADATA.name, options)? - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MIDPOINT_METADATA.name, inputs)?;
+        let period = parse_positive_period(MIDPOINT_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
+        }
+
+        let mut output = vec![0.0; output_len];
+        let produced = run_midpoint_batch(input, period, &mut output);
+        debug_assert_eq!(produced, output_len);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(MIDPOINT_METADATA.name, inputs)?;
+        let period = parse_positive_period(MIDPOINT_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&MIDPOINT_METADATA, outputs, 1)?;
+        ensure_output_len(&MIDPOINT_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_midpoint_batch(
+            input,
+            period,
+            &mut outputs[0][..output_len],
+        ))
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_positive_period(MIDPOINT_METADATA.name, options)?;
+        Ok(Some(Box::new(MidPointStream::new(period))))
+    }
+}
+
+struct MidPointStream {
+    period: usize,
+    progress: usize,
+    max_queue: MonotonicQueue,
+    min_queue: MonotonicQueue,
+}
+
+impl MidPointStream {
+    fn new(period: usize) -> Self {
+        Self {
+            period,
+            progress: 0,
+            max_queue: MonotonicQueue::new(ExtremaKind::Max),
+            min_queue: MonotonicQueue::new(ExtremaKind::Min),
+        }
+    }
+}
+
+impl IndicatorStream for MidPointStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MIDPOINT_METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.progress
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MIDPOINT_METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(input.len());
+
+        for &sample in input {
+            let index = self.progress;
+            self.max_queue.push(index, sample);
+            self.min_queue.push(index, sample);
+            let window_start = index.saturating_add(1).saturating_sub(self.period);
+            self.max_queue.evict_before(window_start);
+            self.min_queue.evict_before(window_start);
+            if index + 1 >= self.period {
+                output.push((self.max_queue.front_value() + self.min_queue.front_value()) * 0.5);
+            }
+            self.progress += 1;
+        }
+
+        Ok(vec![output])
+    }
+}
+
+fn run_midpoint_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() < period {
+        return 0;
+    }
+
+    let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
+    let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+    let mut out_index = 0usize;
+
+    for (index, &sample) in input.iter().enumerate() {
+        max_queue.push(index, sample);
+        min_queue.push(index, sample);
+        let window_start = index + 1 - period.min(index + 1);
+        max_queue.evict_before(window_start);
+        min_queue.evict_before(window_start);
+        if index + 1 >= period {
+            output[out_index] = (max_queue.front_value() + min_queue.front_value()) * 0.5;
+            out_index += 1;
+        }
+    }
+
+    out_index
 }
 
 struct LagStream {

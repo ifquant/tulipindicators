@@ -1,15 +1,16 @@
 use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
     Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmf, Cmo, Copp, Cvi, Di, Dm,
-    Dpo, Dx, Emv, Fi, Fisher, Fosc, Kst, Kvo, LinReg, LinRegIntercept, LinRegSlope, Macd, MarketFi,
-    Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo, Psar, Pvi, Qstick, Rmi, Roc, Rocr,
-    Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf, Tsi, UltOsc, Var, Vhf,
-    Volatility, Vosc, Wad, WillR,
+    Dpo, Dx, Emv, Fi, Fisher, Fosc, Kst, Kvo, LinReg, LinRegAngle, LinRegIntercept, LinRegSlope,
+    Macd, MarketFi, Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo, Psar, Pvi, Qstick,
+    Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf, Tsi,
+    UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
 };
-use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, Min, Sum};
+use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, MidPoint, Min, Sum};
 use crate::indicators::overlay::{
     Abands, Alma, AvgPrice, Bbands, Ce, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, Mama, MedPrice,
-    Pbands, Pc, Rmta, Sma, Tema, Trima, TypPrice, Vidya, Vwap, Vwma, WcPrice, Wilders, Wma, Zlema,
+    MidPrice, Pbands, Pc, Rmta, Sma, Tema, Trima, TypPrice, Vidya, Vwap, Vwma, WcPrice, Wilders,
+    Wma, Zlema,
 };
 use crate::indicators::simple::{
     Abs, Acos, Add, Asin, Atan, Ceil, Cos, Cosh, Div, Exp, Floor, Ln, Log10, Mul, Round, Sin, Sinh,
@@ -69,6 +70,7 @@ pub static KC: Kc = Kc;
 pub static KVO: Kvo = Kvo;
 pub static LAG: Lag = Lag;
 pub static LINREG: LinReg = LinReg;
+pub static LINEARREGANGLE: LinRegAngle = LinRegAngle;
 pub static LINREGINTERCEPT: LinRegIntercept = LinRegIntercept;
 pub static LINREGSLOPE: LinRegSlope = LinRegSlope;
 pub static LN: Ln = Ln;
@@ -80,6 +82,8 @@ pub static MASS: Mass = Mass;
 pub static MAX: Max = Max;
 pub static MD: Md = Md;
 pub static MEDPRICE: MedPrice = MedPrice;
+pub static MIDPOINT: MidPoint = MidPoint;
+pub static MIDPRICE: MidPrice = MidPrice;
 pub static MFI: Mfi = Mfi;
 pub static MIN: Min = Min;
 pub static MOM: Mom = Mom;
@@ -99,6 +103,7 @@ pub static QSTICK: Qstick = Qstick;
 pub static RMI: Rmi = Rmi;
 pub static ROC: Roc = Roc;
 pub static ROCR: Rocr = Rocr;
+pub static ROCR100: Rocr100 = Rocr100;
 pub static RMTA: Rmta = Rmta;
 pub static RSI: Rsi = Rsi;
 pub static RVI: Rvi = Rvi;
@@ -142,7 +147,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 125] {
+pub fn all() -> [&'static dyn Indicator; 129] {
     [
         &ABS,
         &ACOS,
@@ -197,6 +202,7 @@ pub fn all() -> [&'static dyn Indicator; 125] {
         &KVO,
         &LAG,
         &LINREG,
+        &LINEARREGANGLE,
         &LINREGINTERCEPT,
         &LINREGSLOPE,
         &LN,
@@ -208,6 +214,8 @@ pub fn all() -> [&'static dyn Indicator; 125] {
         &MAX,
         &MD,
         &MEDPRICE,
+        &MIDPOINT,
+        &MIDPRICE,
         &MFI,
         &MIN,
         &MOM,
@@ -227,6 +235,7 @@ pub fn all() -> [&'static dyn Indicator; 125] {
         &RMI,
         &ROC,
         &ROCR,
+        &ROCR100,
         &RMTA,
         &RSI,
         &RVI,
@@ -327,6 +336,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "kvo" => Some(&KVO),
         "lag" => Some(&LAG),
         "linreg" => Some(&LINREG),
+        "linearregangle" => Some(&LINEARREGANGLE),
         "linregintercept" => Some(&LINREGINTERCEPT),
         "linregslope" => Some(&LINREGSLOPE),
         "ln" => Some(&LN),
@@ -338,6 +348,8 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "max" => Some(&MAX),
         "md" => Some(&MD),
         "medprice" => Some(&MEDPRICE),
+        "midpoint" => Some(&MIDPOINT),
+        "midprice" => Some(&MIDPRICE),
         "mfi" => Some(&MFI),
         "min" => Some(&MIN),
         "mom" => Some(&MOM),
@@ -357,6 +369,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "rmi" => Some(&RMI),
         "roc" => Some(&ROC),
         "rocr" => Some(&ROCR),
+        "rocr100" => Some(&ROCR100),
         "rmta" => Some(&RMTA),
         "rsi" => Some(&RSI),
         "rvi" => Some(&RVI),

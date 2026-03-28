@@ -30,7 +30,7 @@
 /*
  *
  * Version 0.9.2
- * Header Build 1645649572
+ * Header Build 1774730527
  *
  */
 
@@ -44,7 +44,7 @@
 
 
 #define TI_VERSION "0.9.2"
-#define TI_BUILD 1645649572
+#define TI_BUILD 1774730527
 
 
 
@@ -539,13 +539,22 @@ int ti_kvo(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 #define TI_INDICATOR_LAG_INDEX 42
 int ti_lag_start(TI_REAL const *options);
 int ti_lag(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
+/* Linear Regression Angle */
+/* Type: indicator */
+/* Input arrays: 1    Options: 1    Output arrays: 1 */
+/* Inputs: real */
+/* Options: period */
+/* Outputs: linearregangle */
+#define TI_INDICATOR_LINEARREGANGLE_INDEX 43
+int ti_linearregangle_start(TI_REAL const *options);
+int ti_linearregangle(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Linear Regression */
 /* Type: overlay */
 /* Input arrays: 1    Options: 1    Output arrays: 1 */
 /* Inputs: real */
 /* Options: period */
 /* Outputs: linreg */
-#define TI_INDICATOR_LINREG_INDEX 43
+#define TI_INDICATOR_LINREG_INDEX 44
 int ti_linreg_start(TI_REAL const *options);
 int ti_linreg(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Linear Regression Intercept */
@@ -554,7 +563,7 @@ int ti_linreg(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI
 /* Inputs: real */
 /* Options: period */
 /* Outputs: linregintercept */
-#define TI_INDICATOR_LINREGINTERCEPT_INDEX 44
+#define TI_INDICATOR_LINREGINTERCEPT_INDEX 45
 int ti_linregintercept_start(TI_REAL const *options);
 int ti_linregintercept(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Linear Regression Slope */
@@ -563,7 +572,7 @@ int ti_linregintercept(int size, TI_REAL const *const *inputs, TI_REAL const *op
 /* Inputs: real */
 /* Options: period */
 /* Outputs: linregslope */
-#define TI_INDICATOR_LINREGSLOPE_INDEX 45
+#define TI_INDICATOR_LINREGSLOPE_INDEX 46
 int ti_linregslope_start(TI_REAL const *options);
 int ti_linregslope(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Natural Log */
@@ -572,7 +581,7 @@ int ti_linregslope(int size, TI_REAL const *const *inputs, TI_REAL const *option
 /* Inputs: real */
 /* Options: none */
 /* Outputs: ln */
-#define TI_INDICATOR_LN_INDEX 46
+#define TI_INDICATOR_LN_INDEX 47
 int ti_ln_start(TI_REAL const *options);
 int ti_ln(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Base-10 Log */
@@ -581,7 +590,7 @@ int ti_ln(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REA
 /* Inputs: real */
 /* Options: none */
 /* Outputs: log10 */
-#define TI_INDICATOR_LOG10_INDEX 47
+#define TI_INDICATOR_LOG10_INDEX 48
 int ti_log10_start(TI_REAL const *options);
 int ti_log10(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Moving Average Convergence/Divergence */
@@ -590,7 +599,7 @@ int ti_log10(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_
 /* Inputs: real */
 /* Options: short_period, long_period, signal_period */
 /* Outputs: macd, macd_signal, macd_histogram */
-#define TI_INDICATOR_MACD_INDEX 48
+#define TI_INDICATOR_MACD_INDEX 49
 int ti_macd_start(TI_REAL const *options);
 int ti_macd(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Market Facilitation Index */
@@ -599,7 +608,7 @@ int ti_macd(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: high, low, volume */
 /* Options: none */
 /* Outputs: marketfi */
-#define TI_INDICATOR_MARKETFI_INDEX 49
+#define TI_INDICATOR_MARKETFI_INDEX 50
 int ti_marketfi_start(TI_REAL const *options);
 int ti_marketfi(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Mass Index */
@@ -608,7 +617,7 @@ int ti_marketfi(int size, TI_REAL const *const *inputs, TI_REAL const *options, 
 /* Inputs: high, low */
 /* Options: period */
 /* Outputs: mass */
-#define TI_INDICATOR_MASS_INDEX 50
+#define TI_INDICATOR_MASS_INDEX 51
 int ti_mass_start(TI_REAL const *options);
 int ti_mass(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Maximum In Period */
@@ -617,7 +626,7 @@ int ti_mass(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: real */
 /* Options: period */
 /* Outputs: max */
-#define TI_INDICATOR_MAX_INDEX 51
+#define TI_INDICATOR_MAX_INDEX 52
 int ti_max_start(TI_REAL const *options);
 int ti_max(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 int ti_max_ref(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
@@ -627,7 +636,7 @@ int ti_max_ref(int size, TI_REAL const *const *inputs, TI_REAL const *options, T
 /* Inputs: real */
 /* Options: period */
 /* Outputs: md */
-#define TI_INDICATOR_MD_INDEX 52
+#define TI_INDICATOR_MD_INDEX 53
 int ti_md_start(TI_REAL const *options);
 int ti_md(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Median Price */
@@ -636,7 +645,7 @@ int ti_md(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REA
 /* Inputs: high, low */
 /* Options: none */
 /* Outputs: medprice */
-#define TI_INDICATOR_MEDPRICE_INDEX 53
+#define TI_INDICATOR_MEDPRICE_INDEX 54
 int ti_medprice_start(TI_REAL const *options);
 int ti_medprice(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Money Flow Index */
@@ -645,16 +654,34 @@ int ti_medprice(int size, TI_REAL const *const *inputs, TI_REAL const *options, 
 /* Inputs: high, low, close, volume */
 /* Options: period */
 /* Outputs: mfi */
-#define TI_INDICATOR_MFI_INDEX 54
+#define TI_INDICATOR_MFI_INDEX 55
 int ti_mfi_start(TI_REAL const *options);
 int ti_mfi(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
+/* Midpoint Over Period */
+/* Type: math */
+/* Input arrays: 1    Options: 1    Output arrays: 1 */
+/* Inputs: real */
+/* Options: period */
+/* Outputs: midpoint */
+#define TI_INDICATOR_MIDPOINT_INDEX 56
+int ti_midpoint_start(TI_REAL const *options);
+int ti_midpoint(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
+/* Midpoint Price Over Period */
+/* Type: overlay */
+/* Input arrays: 2    Options: 1    Output arrays: 1 */
+/* Inputs: high, low */
+/* Options: period */
+/* Outputs: midprice */
+#define TI_INDICATOR_MIDPRICE_INDEX 57
+int ti_midprice_start(TI_REAL const *options);
+int ti_midprice(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Minimum In Period */
 /* Type: math */
 /* Input arrays: 1    Options: 1    Output arrays: 1 */
 /* Inputs: real */
 /* Options: period */
 /* Outputs: min */
-#define TI_INDICATOR_MIN_INDEX 55
+#define TI_INDICATOR_MIN_INDEX 58
 int ti_min_start(TI_REAL const *options);
 int ti_min(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 int ti_min_ref(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
@@ -664,7 +691,7 @@ int ti_min_ref(int size, TI_REAL const *const *inputs, TI_REAL const *options, T
 /* Inputs: real */
 /* Options: period */
 /* Outputs: mom */
-#define TI_INDICATOR_MOM_INDEX 56
+#define TI_INDICATOR_MOM_INDEX 59
 int ti_mom_start(TI_REAL const *options);
 int ti_mom(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Mesa Sine Wave */
@@ -673,7 +700,7 @@ int ti_mom(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: period */
 /* Outputs: msw_sine, msw_lead */
-#define TI_INDICATOR_MSW_INDEX 57
+#define TI_INDICATOR_MSW_INDEX 60
 int ti_msw_start(TI_REAL const *options);
 int ti_msw(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Multiplication */
@@ -682,7 +709,7 @@ int ti_msw(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real, real */
 /* Options: none */
 /* Outputs: mul */
-#define TI_INDICATOR_MUL_INDEX 58
+#define TI_INDICATOR_MUL_INDEX 61
 int ti_mul_start(TI_REAL const *options);
 int ti_mul(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Normalized Average True Range */
@@ -691,7 +718,7 @@ int ti_mul(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: high, low, close */
 /* Options: period */
 /* Outputs: natr */
-#define TI_INDICATOR_NATR_INDEX 59
+#define TI_INDICATOR_NATR_INDEX 62
 int ti_natr_start(TI_REAL const *options);
 int ti_natr(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Negative Volume Index */
@@ -700,7 +727,7 @@ int ti_natr(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: close, volume */
 /* Options: none */
 /* Outputs: nvi */
-#define TI_INDICATOR_NVI_INDEX 60
+#define TI_INDICATOR_NVI_INDEX 63
 int ti_nvi_start(TI_REAL const *options);
 int ti_nvi(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* On Balance Volume */
@@ -709,7 +736,7 @@ int ti_nvi(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: close, volume */
 /* Options: none */
 /* Outputs: obv */
-#define TI_INDICATOR_OBV_INDEX 61
+#define TI_INDICATOR_OBV_INDEX 64
 int ti_obv_start(TI_REAL const *options);
 int ti_obv(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Percentage Price Oscillator */
@@ -718,7 +745,7 @@ int ti_obv(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: short_period, long_period */
 /* Outputs: ppo */
-#define TI_INDICATOR_PPO_INDEX 62
+#define TI_INDICATOR_PPO_INDEX 65
 int ti_ppo_start(TI_REAL const *options);
 int ti_ppo(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Parabolic SAR */
@@ -727,7 +754,7 @@ int ti_ppo(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: high, low */
 /* Options: acceleration_factor_step, acceleration_factor_maximum */
 /* Outputs: psar */
-#define TI_INDICATOR_PSAR_INDEX 63
+#define TI_INDICATOR_PSAR_INDEX 66
 int ti_psar_start(TI_REAL const *options);
 int ti_psar(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Positive Volume Index */
@@ -736,7 +763,7 @@ int ti_psar(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: close, volume */
 /* Options: none */
 /* Outputs: pvi */
-#define TI_INDICATOR_PVI_INDEX 64
+#define TI_INDICATOR_PVI_INDEX 67
 int ti_pvi_start(TI_REAL const *options);
 int ti_pvi(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Qstick */
@@ -745,7 +772,7 @@ int ti_pvi(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: open, close */
 /* Options: period */
 /* Outputs: qstick */
-#define TI_INDICATOR_QSTICK_INDEX 65
+#define TI_INDICATOR_QSTICK_INDEX 68
 int ti_qstick_start(TI_REAL const *options);
 int ti_qstick(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Rate of Change */
@@ -754,7 +781,7 @@ int ti_qstick(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI
 /* Inputs: real */
 /* Options: period */
 /* Outputs: roc */
-#define TI_INDICATOR_ROC_INDEX 66
+#define TI_INDICATOR_ROC_INDEX 69
 int ti_roc_start(TI_REAL const *options);
 int ti_roc(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Rate of Change Ratio */
@@ -763,16 +790,25 @@ int ti_roc(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: period */
 /* Outputs: rocr */
-#define TI_INDICATOR_ROCR_INDEX 67
+#define TI_INDICATOR_ROCR_INDEX 70
 int ti_rocr_start(TI_REAL const *options);
 int ti_rocr(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
+/* Rate of Change Ratio 100 Scale */
+/* Type: indicator */
+/* Input arrays: 1    Options: 1    Output arrays: 1 */
+/* Inputs: real */
+/* Options: period */
+/* Outputs: rocr100 */
+#define TI_INDICATOR_ROCR100_INDEX 71
+int ti_rocr100_start(TI_REAL const *options);
+int ti_rocr100(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Round */
 /* Type: simple */
 /* Input arrays: 1    Options: 0    Output arrays: 1 */
 /* Inputs: real */
 /* Options: none */
 /* Outputs: round */
-#define TI_INDICATOR_ROUND_INDEX 68
+#define TI_INDICATOR_ROUND_INDEX 72
 int ti_round_start(TI_REAL const *options);
 int ti_round(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Relative Strength Index */
@@ -781,7 +817,7 @@ int ti_round(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_
 /* Inputs: real */
 /* Options: period */
 /* Outputs: rsi */
-#define TI_INDICATOR_RSI_INDEX 69
+#define TI_INDICATOR_RSI_INDEX 73
 int ti_rsi_start(TI_REAL const *options);
 int ti_rsi(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Sine */
@@ -790,7 +826,7 @@ int ti_rsi(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: none */
 /* Outputs: sin */
-#define TI_INDICATOR_SIN_INDEX 70
+#define TI_INDICATOR_SIN_INDEX 74
 int ti_sin_start(TI_REAL const *options);
 int ti_sin(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Hyperbolic Sine */
@@ -799,7 +835,7 @@ int ti_sin(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: none */
 /* Outputs: sinh */
-#define TI_INDICATOR_SINH_INDEX 71
+#define TI_INDICATOR_SINH_INDEX 75
 int ti_sinh_start(TI_REAL const *options);
 int ti_sinh(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Simple Moving Average */
@@ -808,7 +844,7 @@ int ti_sinh(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: real */
 /* Options: period */
 /* Outputs: sma */
-#define TI_INDICATOR_SMA_INDEX 72
+#define TI_INDICATOR_SMA_INDEX 76
 int ti_sma_start(TI_REAL const *options);
 int ti_sma(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 int ti_sma_stream_new(TI_REAL const *options, ti_stream **stream);
@@ -820,7 +856,7 @@ void ti_sma_stream_free(ti_stream *stream);
 /* Inputs: real */
 /* Options: none */
 /* Outputs: sqrt */
-#define TI_INDICATOR_SQRT_INDEX 73
+#define TI_INDICATOR_SQRT_INDEX 77
 int ti_sqrt_start(TI_REAL const *options);
 int ti_sqrt(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Standard Deviation Over Period */
@@ -829,7 +865,7 @@ int ti_sqrt(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: real */
 /* Options: period */
 /* Outputs: stddev */
-#define TI_INDICATOR_STDDEV_INDEX 74
+#define TI_INDICATOR_STDDEV_INDEX 78
 int ti_stddev_start(TI_REAL const *options);
 int ti_stddev(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Standard Error Over Period */
@@ -838,7 +874,7 @@ int ti_stddev(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI
 /* Inputs: real */
 /* Options: period */
 /* Outputs: stderr */
-#define TI_INDICATOR_STDERR_INDEX 75
+#define TI_INDICATOR_STDERR_INDEX 79
 int ti_stderr_start(TI_REAL const *options);
 int ti_stderr(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Stochastic Oscillator */
@@ -847,7 +883,7 @@ int ti_stderr(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI
 /* Inputs: high, low, close */
 /* Options: k_period, k_slowing_period, d_period */
 /* Outputs: stoch_k, stoch_d */
-#define TI_INDICATOR_STOCH_INDEX 76
+#define TI_INDICATOR_STOCH_INDEX 80
 int ti_stoch_start(TI_REAL const *options);
 int ti_stoch(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Stochastic RSI */
@@ -856,7 +892,7 @@ int ti_stoch(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_
 /* Inputs: real */
 /* Options: period */
 /* Outputs: stochrsi */
-#define TI_INDICATOR_STOCHRSI_INDEX 77
+#define TI_INDICATOR_STOCHRSI_INDEX 81
 int ti_stochrsi_start(TI_REAL const *options);
 int ti_stochrsi(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Subtraction */
@@ -865,7 +901,7 @@ int ti_stochrsi(int size, TI_REAL const *const *inputs, TI_REAL const *options, 
 /* Inputs: real, real */
 /* Options: none */
 /* Outputs: sub */
-#define TI_INDICATOR_SUB_INDEX 78
+#define TI_INDICATOR_SUB_INDEX 82
 int ti_sub_start(TI_REAL const *options);
 int ti_sub(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Sum Over Period */
@@ -874,7 +910,7 @@ int ti_sub(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: period */
 /* Outputs: sum */
-#define TI_INDICATOR_SUM_INDEX 79
+#define TI_INDICATOR_SUM_INDEX 83
 int ti_sum_start(TI_REAL const *options);
 int ti_sum(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Tangent */
@@ -883,7 +919,7 @@ int ti_sum(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: none */
 /* Outputs: tan */
-#define TI_INDICATOR_TAN_INDEX 80
+#define TI_INDICATOR_TAN_INDEX 84
 int ti_tan_start(TI_REAL const *options);
 int ti_tan(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Hyperbolic Tangent */
@@ -892,7 +928,7 @@ int ti_tan(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: none */
 /* Outputs: tanh */
-#define TI_INDICATOR_TANH_INDEX 81
+#define TI_INDICATOR_TANH_INDEX 85
 int ti_tanh_start(TI_REAL const *options);
 int ti_tanh(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Triple Exponential Moving Average */
@@ -901,7 +937,7 @@ int ti_tanh(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: real */
 /* Options: period */
 /* Outputs: tema */
-#define TI_INDICATOR_TEMA_INDEX 82
+#define TI_INDICATOR_TEMA_INDEX 86
 int ti_tema_start(TI_REAL const *options);
 int ti_tema(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Degree Conversion */
@@ -910,7 +946,7 @@ int ti_tema(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: real */
 /* Options: none */
 /* Outputs: degrees */
-#define TI_INDICATOR_TODEG_INDEX 83
+#define TI_INDICATOR_TODEG_INDEX 87
 int ti_todeg_start(TI_REAL const *options);
 int ti_todeg(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Radian Conversion */
@@ -919,7 +955,7 @@ int ti_todeg(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_
 /* Inputs: real */
 /* Options: none */
 /* Outputs: radians */
-#define TI_INDICATOR_TORAD_INDEX 84
+#define TI_INDICATOR_TORAD_INDEX 88
 int ti_torad_start(TI_REAL const *options);
 int ti_torad(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* True Range */
@@ -928,7 +964,7 @@ int ti_torad(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_
 /* Inputs: high, low, close */
 /* Options: none */
 /* Outputs: tr */
-#define TI_INDICATOR_TR_INDEX 85
+#define TI_INDICATOR_TR_INDEX 89
 int ti_tr_start(TI_REAL const *options);
 int ti_tr(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Triangular Moving Average */
@@ -937,7 +973,7 @@ int ti_tr(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REA
 /* Inputs: real */
 /* Options: period */
 /* Outputs: trima */
-#define TI_INDICATOR_TRIMA_INDEX 86
+#define TI_INDICATOR_TRIMA_INDEX 90
 int ti_trima_start(TI_REAL const *options);
 int ti_trima(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Trix */
@@ -946,7 +982,7 @@ int ti_trima(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_
 /* Inputs: real */
 /* Options: period */
 /* Outputs: trix */
-#define TI_INDICATOR_TRIX_INDEX 87
+#define TI_INDICATOR_TRIX_INDEX 91
 int ti_trix_start(TI_REAL const *options);
 int ti_trix(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vector Truncate */
@@ -955,7 +991,7 @@ int ti_trix(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: real */
 /* Options: none */
 /* Outputs: trunc */
-#define TI_INDICATOR_TRUNC_INDEX 88
+#define TI_INDICATOR_TRUNC_INDEX 92
 int ti_trunc_start(TI_REAL const *options);
 int ti_trunc(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Time Series Forecast */
@@ -964,7 +1000,7 @@ int ti_trunc(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_
 /* Inputs: real */
 /* Options: period */
 /* Outputs: tsf */
-#define TI_INDICATOR_TSF_INDEX 89
+#define TI_INDICATOR_TSF_INDEX 93
 int ti_tsf_start(TI_REAL const *options);
 int ti_tsf(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Typical Price */
@@ -973,7 +1009,7 @@ int ti_tsf(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: high, low, close */
 /* Options: none */
 /* Outputs: typprice */
-#define TI_INDICATOR_TYPPRICE_INDEX 90
+#define TI_INDICATOR_TYPPRICE_INDEX 94
 int ti_typprice_start(TI_REAL const *options);
 int ti_typprice(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Ultimate Oscillator */
@@ -982,7 +1018,7 @@ int ti_typprice(int size, TI_REAL const *const *inputs, TI_REAL const *options, 
 /* Inputs: high, low, close */
 /* Options: short_period, medium_period, long_period */
 /* Outputs: ultosc */
-#define TI_INDICATOR_ULTOSC_INDEX 91
+#define TI_INDICATOR_ULTOSC_INDEX 95
 int ti_ultosc_start(TI_REAL const *options);
 int ti_ultosc(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Variance Over Period */
@@ -991,7 +1027,7 @@ int ti_ultosc(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI
 /* Inputs: real */
 /* Options: period */
 /* Outputs: var */
-#define TI_INDICATOR_VAR_INDEX 92
+#define TI_INDICATOR_VAR_INDEX 96
 int ti_var_start(TI_REAL const *options);
 int ti_var(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Vertical Horizontal Filter */
@@ -1000,7 +1036,7 @@ int ti_var(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: period */
 /* Outputs: vhf */
-#define TI_INDICATOR_VHF_INDEX 93
+#define TI_INDICATOR_VHF_INDEX 97
 int ti_vhf_start(TI_REAL const *options);
 int ti_vhf(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Variable Index Dynamic Average */
@@ -1009,7 +1045,7 @@ int ti_vhf(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: short_period, long_period, alpha */
 /* Outputs: vidya */
-#define TI_INDICATOR_VIDYA_INDEX 94
+#define TI_INDICATOR_VIDYA_INDEX 98
 int ti_vidya_start(TI_REAL const *options);
 int ti_vidya(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Annualized Historical Volatility */
@@ -1018,7 +1054,7 @@ int ti_vidya(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_
 /* Inputs: real */
 /* Options: period */
 /* Outputs: volatility */
-#define TI_INDICATOR_VOLATILITY_INDEX 95
+#define TI_INDICATOR_VOLATILITY_INDEX 99
 int ti_volatility_start(TI_REAL const *options);
 int ti_volatility(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Volume Oscillator */
@@ -1027,7 +1063,7 @@ int ti_volatility(int size, TI_REAL const *const *inputs, TI_REAL const *options
 /* Inputs: volume */
 /* Options: short_period, long_period */
 /* Outputs: vosc */
-#define TI_INDICATOR_VOSC_INDEX 96
+#define TI_INDICATOR_VOSC_INDEX 100
 int ti_vosc_start(TI_REAL const *options);
 int ti_vosc(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Volume Weighted Moving Average */
@@ -1036,7 +1072,7 @@ int ti_vosc(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: close, volume */
 /* Options: period */
 /* Outputs: vwma */
-#define TI_INDICATOR_VWMA_INDEX 97
+#define TI_INDICATOR_VWMA_INDEX 101
 int ti_vwma_start(TI_REAL const *options);
 int ti_vwma(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Williams Accumulation/Distribution */
@@ -1045,7 +1081,7 @@ int ti_vwma(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_R
 /* Inputs: high, low, close */
 /* Options: none */
 /* Outputs: wad */
-#define TI_INDICATOR_WAD_INDEX 98
+#define TI_INDICATOR_WAD_INDEX 102
 int ti_wad_start(TI_REAL const *options);
 int ti_wad(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Weighted Close Price */
@@ -1054,7 +1090,7 @@ int ti_wad(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: high, low, close */
 /* Options: none */
 /* Outputs: wcprice */
-#define TI_INDICATOR_WCPRICE_INDEX 99
+#define TI_INDICATOR_WCPRICE_INDEX 103
 int ti_wcprice_start(TI_REAL const *options);
 int ti_wcprice(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Wilders Smoothing */
@@ -1063,7 +1099,7 @@ int ti_wcprice(int size, TI_REAL const *const *inputs, TI_REAL const *options, T
 /* Inputs: real */
 /* Options: period */
 /* Outputs: wilders */
-#define TI_INDICATOR_WILDERS_INDEX 100
+#define TI_INDICATOR_WILDERS_INDEX 104
 int ti_wilders_start(TI_REAL const *options);
 int ti_wilders(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Williams %R */
@@ -1072,7 +1108,7 @@ int ti_wilders(int size, TI_REAL const *const *inputs, TI_REAL const *options, T
 /* Inputs: high, low, close */
 /* Options: period */
 /* Outputs: willr */
-#define TI_INDICATOR_WILLR_INDEX 101
+#define TI_INDICATOR_WILLR_INDEX 105
 int ti_willr_start(TI_REAL const *options);
 int ti_willr(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Weighted Moving Average */
@@ -1081,7 +1117,7 @@ int ti_willr(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_
 /* Inputs: real */
 /* Options: period */
 /* Outputs: wma */
-#define TI_INDICATOR_WMA_INDEX 102
+#define TI_INDICATOR_WMA_INDEX 106
 int ti_wma_start(TI_REAL const *options);
 int ti_wma(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 /* Zero-Lag Exponential Moving Average */
@@ -1090,7 +1126,7 @@ int ti_wma(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_RE
 /* Inputs: real */
 /* Options: period */
 /* Outputs: zlema */
-#define TI_INDICATOR_ZLEMA_INDEX 103
+#define TI_INDICATOR_ZLEMA_INDEX 107
 int ti_zlema_start(TI_REAL const *options);
 int ti_zlema(int size, TI_REAL const *const *inputs, TI_REAL const *options, TI_REAL *const *outputs);
 

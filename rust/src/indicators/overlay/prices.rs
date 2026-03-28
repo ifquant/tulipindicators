@@ -3,7 +3,10 @@ use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
 };
 use crate::core::types::{IndicatorCategory, Real};
-use crate::core::validation::{double_input, expect_option_count, quadruple_input, triple_input};
+use crate::core::validation::{
+    double_input, expect_option_count, parse_usize_option, quadruple_input, triple_input,
+};
+use crate::indicators::shared::{ExtremaKind, MonotonicQueue};
 
 struct DoubleOverlayStream {
     metadata: &'static IndicatorMetadata,
@@ -204,6 +207,15 @@ const MEDPRICE_METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["medprice"],
 };
 
+const MIDPRICE_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "midprice",
+    full_name: "Midpoint Price Over Period",
+    category: IndicatorCategory::Overlay,
+    input_names: &["high", "low"],
+    option_names: &["period"],
+    output_names: &["midprice"],
+};
+
 const TYPPRICE_METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "typprice",
     full_name: "Typical Price",
@@ -224,6 +236,8 @@ const WCPRICE_METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct AvgPrice;
+#[derive(Debug, Clone, Copy)]
+pub struct MidPrice;
 
 impl Indicator for AvgPrice {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -342,11 +356,134 @@ impl Indicator for MedPrice {
     }
 }
 
+impl Indicator for MidPrice {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MIDPRICE_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        Ok(parse_period(MIDPRICE_METADATA.name, options)? - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let (high, low) = double_input(MIDPRICE_METADATA.name, inputs)?;
+        let period = parse_period(MIDPRICE_METADATA.name, options)?;
+        let output_len = high.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
+        }
+
+        let mut output = vec![0.0; output_len];
+        let produced = run_midprice_batch(high, low, period, &mut output);
+        debug_assert_eq!(produced, output_len);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(MIDPRICE_METADATA.name, inputs)?;
+        let period = parse_period(MIDPRICE_METADATA.name, options)?;
+        let output_len = high.len().saturating_sub(period - 1);
+        validate_output_slices(&MIDPRICE_METADATA, outputs, 1)?;
+        ensure_output_len(&MIDPRICE_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_midprice_batch(
+            high,
+            low,
+            period,
+            &mut outputs[0][..output_len],
+        ))
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_period(MIDPRICE_METADATA.name, options)?;
+        Ok(Some(Box::new(MidPriceStream::new(period))))
+    }
+}
+
 fn run_medprice_batch(high: &[Real], low: &[Real], output: &mut [Real]) -> usize {
     for index in 0..high.len() {
         output[index] = (high[index] + low[index]) * 0.5;
     }
     output.len()
+}
+
+struct MidPriceStream {
+    period: usize,
+    progress: usize,
+    high_queue: MonotonicQueue,
+    low_queue: MonotonicQueue,
+}
+
+impl MidPriceStream {
+    fn new(period: usize) -> Self {
+        Self {
+            period,
+            progress: 0,
+            high_queue: MonotonicQueue::new(ExtremaKind::Max),
+            low_queue: MonotonicQueue::new(ExtremaKind::Min),
+        }
+    }
+}
+
+impl IndicatorStream for MidPriceStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MIDPRICE_METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.progress
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let (high, low) = double_input(MIDPRICE_METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(high.len());
+
+        for (&high_sample, &low_sample) in high.iter().zip(low.iter()) {
+            let index = self.progress;
+            self.high_queue.push(index, high_sample);
+            self.low_queue.push(index, low_sample);
+            let window_start = index.saturating_add(1).saturating_sub(self.period);
+            self.high_queue.evict_before(window_start);
+            self.low_queue.evict_before(window_start);
+            if index + 1 >= self.period {
+                output.push((self.high_queue.front_value() + self.low_queue.front_value()) * 0.5);
+            }
+            self.progress += 1;
+        }
+
+        Ok(vec![output])
+    }
+}
+
+fn run_midprice_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if high.len() < period {
+        return 0;
+    }
+
+    let mut high_queue = MonotonicQueue::new(ExtremaKind::Max);
+    let mut low_queue = MonotonicQueue::new(ExtremaKind::Min);
+    let mut out_index = 0usize;
+
+    for index in 0..high.len() {
+        high_queue.push(index, high[index]);
+        low_queue.push(index, low[index]);
+        let window_start = index + 1 - period.min(index + 1);
+        high_queue.evict_before(window_start);
+        low_queue.evict_before(window_start);
+        if index + 1 >= period {
+            output[out_index] = (high_queue.front_value() + low_queue.front_value()) * 0.5;
+            out_index += 1;
+        }
+    }
+
+    out_index
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -465,4 +602,9 @@ fn run_wcprice_batch(high: &[Real], low: &[Real], close: &[Real], output: &mut [
         output[index] = (high[index] + low[index] + close[index] + close[index]) * 0.25;
     }
     output.len()
+}
+
+fn parse_period(name: &'static str, options: &[Real]) -> Result<usize, IndicatorError> {
+    expect_option_count(name, options, 1)?;
+    parse_usize_option(name, options, 0, "period", 1)
 }

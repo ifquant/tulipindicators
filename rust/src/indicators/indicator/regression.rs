@@ -23,6 +23,15 @@ const LINREGINTERCEPT_METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["linregintercept"],
 };
 
+const LINREGANGLE_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "linearregangle",
+    full_name: "Linear Regression Angle",
+    category: IndicatorCategory::Indicator,
+    input_names: &["real"],
+    option_names: &["period"],
+    output_names: &["linearregangle"],
+};
+
 const LINREGSLOPE_METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "linregslope",
     full_name: "Linear Regression Slope",
@@ -54,6 +63,8 @@ const FOSC_METADATA: IndicatorMetadata = IndicatorMetadata {
 pub struct LinReg;
 #[derive(Debug, Clone, Copy)]
 pub struct LinRegIntercept;
+#[derive(Debug, Clone, Copy)]
+pub struct LinRegAngle;
 #[derive(Debug, Clone, Copy)]
 pub struct LinRegSlope;
 #[derive(Debug, Clone, Copy)]
@@ -233,6 +244,60 @@ impl Indicator for LinRegSlope {
     }
 }
 
+impl Indicator for LinRegAngle {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &LINREGANGLE_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        Ok(parse_period(LINREGANGLE_METADATA.name, options)? - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let period = parse_period(LINREGANGLE_METADATA.name, options)?;
+        let input = single_input(LINREGANGLE_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
+        }
+        let mut output = vec![0.0; output_len];
+        let written = run_regression_batch(input, period, RegressionProjection::Angle, &mut output);
+        debug_assert_eq!(written, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let period = parse_period(LINREGANGLE_METADATA.name, options)?;
+        let input = single_input(LINREGANGLE_METADATA.name, inputs)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&LINREGANGLE_METADATA, outputs, 1)?;
+        ensure_output_len(&LINREGANGLE_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_regression_batch(
+            input,
+            period,
+            RegressionProjection::Angle,
+            &mut outputs[0][..output_len],
+        ))
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_period(LINREGANGLE_METADATA.name, options)?;
+        Ok(Some(Box::new(RegressionProjectionStream::new(
+            &LINREGANGLE_METADATA,
+            period,
+            RegressionProjection::Angle,
+        )?)))
+    }
+}
+
 impl Indicator for Tsf {
     fn metadata(&self) -> &'static IndicatorMetadata {
         &TSF_METADATA
@@ -365,6 +430,7 @@ impl Indicator for Fosc {
 enum RegressionProjection {
     ValueAt(Real),
     Slope,
+    Angle,
 }
 
 fn run_regression_batch(
@@ -406,6 +472,7 @@ fn run_regression_batch(
         output[out_index] = match projection {
             RegressionProjection::ValueAt(x) => intercept0 + slope * x,
             RegressionProjection::Slope => slope,
+            RegressionProjection::Angle => slope.atan() * (180.0 / std::f64::consts::PI),
         };
         out_index += 1;
 
@@ -456,6 +523,9 @@ impl IndicatorStream for RegressionProjectionStream {
                 output.push(match self.projection {
                     RegressionProjection::ValueAt(x) => values.value_at(x),
                     RegressionProjection::Slope => values.slope,
+                    RegressionProjection::Angle => {
+                        values.slope.atan() * (180.0 / std::f64::consts::PI)
+                    }
                 });
             }
             self.progress += 1;

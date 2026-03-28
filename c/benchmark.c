@@ -152,6 +152,7 @@ ind_cross_ref ind_cross_refs[] = {
     {"dm", "plus_dm", 0},
     {"di", "plus_di", 0},
     {"linreg", "linearreg", 0},
+    {"linearregangle", "linearreg_angle", 0},
     {"linregintercept", "linearreg_intercept", 0},
     {"linregslope", "linearreg_slope", 0},
     {"mul", "mult", 0},
@@ -1209,4 +1210,3 @@ int main(int argc, char **argv) {
 
     return 0;
 }
-

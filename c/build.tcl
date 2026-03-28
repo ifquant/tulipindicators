@@ -63,6 +63,7 @@ lappend indicators [list overlay "Zero-Lag Exponential Moving Average" zlema 1 1
 
 #Line fitting
 lappend indicators [list overlay "Linear Regression" linreg 1 1 1 {real} {period} {linreg}]
+lappend indicators [list indicator "Linear Regression Angle" linearregangle 1 1 1 {real} {period} {linearregangle}]
 lappend indicators [list indicator "Linear Regression Intercept" linregintercept 1 1 1 {real} {period} {linregintercept}]
 lappend indicators [list indicator "Linear Regression Slope" linregslope 1 1 1 {real} {period} {linregslope}]
 lappend indicators [list overlay "Time Series Forecast" tsf 1 1 1 {real} {period} {tsf}]
@@ -136,10 +137,12 @@ lappend indicators [list indicator "Mesa Sine Wave" msw 1 1 2 {real} {period} {m
 lappend indicators [list indicator "Momentum" mom 1 1 1 {real} {period} {mom}]
 lappend indicators [list indicator "Rate of Change" roc 1 1 1 {real} {period} {roc}]
 lappend indicators [list indicator "Rate of Change Ratio" rocr 1 1 1 {real} {period} {rocr}]
+lappend indicators [list indicator "Rate of Change Ratio 100 Scale" rocr100 1 1 1 {real} {period} {rocr100}]
 
 #Math functions
 lappend indicators [list math "Lag" lag 1 1 1 {real} {period} {lag}]
 lappend indicators [list math "Maximum In Period" max 1 1 1 {real} {period} {max} {ref}]
+lappend indicators [list math "Midpoint Over Period" midpoint 1 1 1 {real} {period} {midpoint}]
 lappend indicators [list math "Minimum In Period" min 1 1 1 {real} {period} {min} {ref}]
 lappend indicators [list math "Sum Over Period" sum 1 1 1 {real} {period} {sum}]
 lappend indicators [list math "Standard Deviation Over Period" stddev 1 1 1 {real} {period} {stddev}]
@@ -150,6 +153,7 @@ lappend indicators [list math "Variance Over Period" var 1 1 1 {real} {period} {
 #Price average functions
 lappend indicators [list overlay "Average Price" avgprice 4 0 1 {open high low close} {} {avgprice}]
 lappend indicators [list overlay "Median Price" medprice 2 0 1 {high low} {} {medprice}]
+lappend indicators [list overlay "Midpoint Price Over Period" midprice 2 1 1 {high low} {period} {midprice}]
 lappend indicators [list overlay "Typical Price" typprice 3 0 1 {high low close} {} {typprice}]
 lappend indicators [list overlay "Weighted Close Price" wcprice 3 0 1 {high low close} {} {wcprice}]
 
@@ -536,4 +540,3 @@ fill templates/indicators.c indicators.c [list /*VERSION*/ $ti_version /*INDICAT
 
 fill templates/candles.h candles.h [list /*VERSION*/ $tc_version /*VERSION_DEFINE*/ $tc_version_define /*DEFINES*/ $tc_defines /*FUNCTIONS*/ $tc_function_defs]
 fill templates/candles.c candles.c [list /*VERSION*/ $tc_version /*SHORT*/ $tc_short /*PATTERNS*/ $tc_patterns /*FUNCTIONS*/ $tc_functions /*INDEX*/ $tc_index]
-

@@ -22,7 +22,7 @@ pub use dema::Dema;
 pub use ema::Ema;
 pub use hma::Hma;
 pub use kama::Kama;
-pub use prices::{AvgPrice, MedPrice, TypPrice, WcPrice};
+pub use prices::{AvgPrice, MedPrice, MidPrice, TypPrice, WcPrice};
 pub use sma::Sma;
 pub use tema::Tema;
 pub use trima::Trima;
