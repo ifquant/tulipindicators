@@ -4,6 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
+use std::f64::consts::PI;
 
 const LINREG_METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "linreg",
@@ -58,6 +59,8 @@ const FOSC_METADATA: IndicatorMetadata = IndicatorMetadata {
     option_names: &["period"],
     output_names: &["fosc"],
 };
+
+const DEG_PER_RAD: Real = 180.0 / PI;
 
 #[derive(Debug, Clone, Copy)]
 pub struct LinReg;
@@ -261,7 +264,7 @@ impl Indicator for LinRegAngle {
             return Ok(vec![Vec::new()]);
         }
         let mut output = vec![0.0; output_len];
-        let written = run_regression_batch(input, period, RegressionProjection::Angle, &mut output);
+        let written = run_linearregangle_batch(input, period, &mut output);
         debug_assert_eq!(written, output.len());
         Ok(vec![output])
     }
@@ -277,10 +280,9 @@ impl Indicator for LinRegAngle {
         let output_len = input.len().saturating_sub(period - 1);
         validate_output_slices(&LINREGANGLE_METADATA, outputs, 1)?;
         ensure_output_len(&LINREGANGLE_METADATA, outputs[0].len(), output_len, 0)?;
-        Ok(run_regression_batch(
+        Ok(run_linearregangle_batch(
             input,
             period,
-            RegressionProjection::Angle,
             &mut outputs[0][..output_len],
         ))
     }
@@ -483,6 +485,45 @@ fn run_regression_batch(
     out_index
 }
 
+fn run_linearregangle_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() < period {
+        return 0;
+    }
+
+    let mut x_sum = 0.0;
+    let mut x2_sum = 0.0;
+    let mut y_sum = 0.0;
+    let mut xy_sum = 0.0;
+
+    for (index, &sample) in input.iter().enumerate().take(period - 1) {
+        let x = (index + 1) as Real;
+        x_sum += x;
+        x2_sum += x * x;
+        xy_sum += sample * x;
+        y_sum += sample;
+    }
+
+    let period_real = period as Real;
+    x_sum += period_real;
+    x2_sum += period_real * period_real;
+    let inv_denom = 1.0 / (period_real * x2_sum - x_sum * x_sum);
+
+    let mut out_index = 0usize;
+    for index in (period - 1)..input.len() {
+        xy_sum += input[index] * period_real;
+        y_sum += input[index];
+
+        let slope = (period_real * xy_sum - x_sum * y_sum) * inv_denom;
+        output[out_index] = slope.atan() * DEG_PER_RAD;
+        out_index += 1;
+
+        xy_sum -= y_sum;
+        y_sum -= input[index + 1 - period];
+    }
+
+    out_index
+}
+
 struct RegressionProjectionStream {
     metadata: &'static IndicatorMetadata,
     progress: usize,
@@ -523,9 +564,7 @@ impl IndicatorStream for RegressionProjectionStream {
                 output.push(match self.projection {
                     RegressionProjection::ValueAt(x) => values.value_at(x),
                     RegressionProjection::Slope => values.slope,
-                    RegressionProjection::Angle => {
-                        values.slope.atan() * (180.0 / std::f64::consts::PI)
-                    }
+                    RegressionProjection::Angle => values.slope.atan() * DEG_PER_RAD,
                 });
             }
             self.progress += 1;
