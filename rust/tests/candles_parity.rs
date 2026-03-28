@@ -8,13 +8,32 @@ use std::sync::OnceLock;
 
 use candle_cases::parse_candle_cases;
 use tulipindicators::{
-    run_candle_named, run_candle_pattern, run_candles, CandleConfig, CandleSet, TC_ALL,
+    all_candles, candle_count, find_candle, run_candle_named, run_candle_pattern, run_candles,
+    CandleConfig, CandleSet, TC_ALL, TC_SHOOTING_STAR,
 };
 
 const CANDLES_FIXTURE: &str = "c/tests/candles.txt";
 const CANDLE_CONFIGS: &[CandleConfig] = &[
     CandleConfig {
         period: 10,
+        body_none: 0.05,
+        body_short: 0.5,
+        body_long: 1.4,
+        wick_none: 0.05,
+        wick_long: 0.6,
+        near: 0.3,
+    },
+    CandleConfig {
+        period: 7,
+        body_none: 0.05,
+        body_short: 0.5,
+        body_long: 1.4,
+        wick_none: 0.05,
+        wick_long: 0.6,
+        near: 0.3,
+    },
+    CandleConfig {
+        period: 12,
         body_none: 0.05,
         body_short: 0.5,
         body_long: 1.4,
@@ -42,6 +61,13 @@ const CANDLE_CONFIGS: &[CandleConfig] = &[
     },
 ];
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CandleMetadata {
+    name: String,
+    full_name: String,
+    pattern: CandleSet,
+}
+
 #[test]
 fn rust_candles_match_named_fixture_expectations() {
     for case in parse_candle_cases(CANDLES_FIXTURE) {
@@ -59,6 +85,42 @@ fn rust_candles_match_named_fixture_expectations() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn rust_candle_metadata_matches_c() {
+    let oracle = ensure_candle_oracle();
+    let c_metadata = read_c_metadata(&oracle);
+    let rust_metadata: Vec<CandleMetadata> = all_candles()
+        .iter()
+        .map(|info| CandleMetadata {
+            name: info.name.to_string(),
+            full_name: info.full_name.to_string(),
+            pattern: info.pattern,
+        })
+        .collect();
+
+    assert_eq!(
+        candle_count(),
+        all_candles().len(),
+        "rust candle count drifted"
+    );
+    assert_eq!(
+        all_candles().len(),
+        c_metadata.len(),
+        "rust/c candle counts differ"
+    );
+    assert_eq!(rust_metadata, c_metadata, "rust/c candle metadata drifted");
+    assert_eq!(
+        TC_ALL.count_ones() as usize,
+        all_candles().len(),
+        "TC_ALL bitset should cover every candle pattern exactly once"
+    );
+
+    for info in all_candles() {
+        let found = find_candle(info.name).expect("every rust candle name should round-trip");
+        assert_eq!(found, info, "rust candle lookup drifted for {}", info.name);
     }
 }
 
@@ -149,6 +211,51 @@ fn rust_candles_match_c_for_multiple_configs() {
     }
 }
 
+#[test]
+fn rust_detects_shooting_star_in_targeted_case() {
+    let oracle = ensure_candle_oracle();
+    let config = CandleConfig {
+        period: 3,
+        ..CandleConfig::default()
+    };
+    let inputs = [
+        vec![10.0, 8.0, 8.0, 12.0],
+        vec![12.5, 10.5, 10.5, 14.2],
+        vec![9.5, 7.5, 7.5, 12.0],
+        vec![12.0, 10.0, 10.0, 12.1],
+    ];
+    let slices = inputs.each_ref().map(Vec::as_slice);
+    let full = run_candles(TC_ALL, &slices, &config).expect("shooting star case should run");
+    let single = run_candle_pattern(TC_SHOOTING_STAR, &slices, &config)
+        .expect("single shooting star path should run");
+    let c_sets: Vec<CandleSet> = run_c_oracle(&oracle, TC_ALL, &config, &inputs)
+        .into_iter()
+        .map(|set| set & TC_SHOOTING_STAR)
+        .collect();
+
+    assert_eq!(
+        full.at(3) & TC_SHOOTING_STAR,
+        TC_SHOOTING_STAR,
+        "targeted case should produce a shooting star hit"
+    );
+    assert_eq!(
+        (0..inputs[0].len())
+            .map(|index| single.at(index))
+            .collect::<Vec<_>>(),
+        (0..inputs[0].len())
+            .map(|index| full.at(index) & TC_SHOOTING_STAR)
+            .collect::<Vec<_>>(),
+        "single-pattern shooting star path should match the full-engine projection"
+    );
+    assert_eq!(
+        (0..inputs[0].len())
+            .map(|index| full.at(index) & TC_SHOOTING_STAR)
+            .collect::<Vec<_>>(),
+        c_sets,
+        "targeted shooting star case should stay aligned with the stable C full-engine path"
+    );
+}
+
 fn ensure_candle_oracle() -> PathBuf {
     static ORACLE: OnceLock<PathBuf> = OnceLock::new();
     ORACLE
@@ -204,9 +311,10 @@ fn run_c_oracle(
 ) -> Vec<CandleSet> {
     let input_len = inputs[0].len();
     let mut payload = format!(
-        "{} {} {:.17} {:.17} {:.17} {:.17} {:.17} {:.17}\n",
+        "{} {} {} {:.17} {:.17} {:.17} {:.17} {:.17} {:.17}\n",
         patterns,
         input_len,
+        config.period,
         config.body_none,
         config.body_short,
         config.body_long,
@@ -255,4 +363,50 @@ fn run_c_oracle(
                 .unwrap_or_else(|error| panic!("failed to parse candle set `{line}`: {error}"))
         })
         .collect()
+}
+
+fn read_c_metadata(oracle: &Path) -> Vec<CandleMetadata> {
+    let output = Command::new(oracle)
+        .arg("--metadata")
+        .output()
+        .expect("failed to run candle metadata oracle");
+
+    assert!(
+        output.status.success(),
+        "candle metadata oracle failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("oracle output should be utf8");
+    let mut lines = stdout.lines();
+    let count: usize = lines
+        .next()
+        .expect("metadata oracle should print a count")
+        .trim()
+        .parse()
+        .expect("metadata count should be numeric");
+
+    let metadata: Vec<CandleMetadata> = lines
+        .map(|line| {
+            let mut parts = line.split('\t');
+            CandleMetadata {
+                name: parts
+                    .next()
+                    .expect("metadata line should include name")
+                    .to_string(),
+                full_name: parts
+                    .next()
+                    .expect("metadata line should include full name")
+                    .to_string(),
+                pattern: parts
+                    .next()
+                    .expect("metadata line should include pattern")
+                    .parse()
+                    .expect("pattern should be numeric"),
+            }
+        })
+        .collect();
+
+    assert_eq!(metadata.len(), count, "metadata oracle count mismatch");
+    metadata
 }

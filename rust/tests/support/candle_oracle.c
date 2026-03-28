@@ -2,23 +2,41 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int read_value(FILE *fp, double *out) {
     return fscanf(fp, " %lf", out) == 1;
 }
 
-int main(void) {
+static int print_metadata(void) {
+    const int count = tc_candle_count();
+    printf("%d\n", count);
+    for (int i = 0; i < count; ++i) {
+        printf("%s\t%s\t%llu\n",
+               tc_candles[i].name,
+               tc_candles[i].full_name,
+               (unsigned long long)tc_candles[i].pattern);
+    }
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    if (argc > 1 && strcmp(argv[1], "--metadata") == 0) {
+        return print_metadata();
+    }
+
     unsigned long long patterns = 0;
     int input_len = 0;
+    int period = 0;
     tc_config config;
-    if (scanf("%llu %d %lf %lf %lf %lf %lf %lf",
-              &patterns, &input_len,
+    if (scanf("%llu %d %d %lf %lf %lf %lf %lf %lf",
+              &patterns, &input_len, &period,
               &config.body_none, &config.body_short, &config.body_long,
-              &config.wick_none, &config.wick_long, &config.near) != 8) {
+              &config.wick_none, &config.wick_long, &config.near) != 9) {
         fprintf(stderr, "failed to read header\n");
         return 2;
     }
-    config.period = 10;
+    config.period = period;
 
     double *inputs[4] = {0};
     for (int i = 0; i < 4; ++i) {
@@ -43,11 +61,26 @@ int main(void) {
         return 3;
     }
 
-    printf("%d\n", input_len);
-    for (int i = 0; i < input_len; ++i) {
-        printf("%llu\n", (unsigned long long)tc_result_at(result, i));
+    tc_set *sets = calloc((size_t)input_len, sizeof(tc_set));
+    if (!sets) {
+        fprintf(stderr, "failed to allocate candle set buffer\n");
+        return 3;
     }
 
+    const int count = tc_result_count(result);
+    for (int i = 0; i < count; ++i) {
+        const tc_hit hit = tc_result_get(result, i);
+        if (hit.index >= 0 && hit.index < input_len) {
+            sets[hit.index] = hit.patterns;
+        }
+    }
+
+    printf("%d\n", input_len);
+    for (int i = 0; i < input_len; ++i) {
+        printf("%llu\n", (unsigned long long)sets[i]);
+    }
+
+    free(sets);
     tc_result_free(result);
     for (int i = 0; i < 4; ++i) {
         free(inputs[i]);
