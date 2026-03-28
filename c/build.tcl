@@ -101,6 +101,7 @@ lappend indicators [list indicator "Market Facilitation Index" marketfi 3 0 1 {h
 lappend indicators [list indicator "Mass Index" mass 2 1 1 {high low} {period} {mass}]
 lappend indicators [list indicator "Money Flow Index" mfi 4 1 1 {high low close volume} {period} {mfi}]
 lappend indicators [list indicator "Moving Average Convergence/Divergence" macd 1 3 3 {real} {{short_period} {long_period} {signal_period}} {macd macd_signal macd_histogram}]
+lappend indicators [list indicator "Moving Average Convergence/Divergence Fix 12/26" macdfix 1 1 3 {real} {signal_period} {macd macd_signal macd_histogram}]
 lappend indicators [list indicator "Negative Volume Index" nvi 2 0 1 {close volume} {} {nvi}]
 lappend indicators [list indicator "On Balance Volume" obv 2 0 1 {close volume} {} {obv}]
 lappend indicators [list indicator "Percentage Price Oscillator" ppo 1 2 1 {real} {{short_period} {long_period}} {ppo}]

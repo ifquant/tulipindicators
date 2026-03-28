@@ -54,7 +54,7 @@ pub use dpo::Dpo;
 pub use dx::Dx;
 pub use emv::Emv;
 pub use kvo::Kvo;
-pub use macd::Macd;
+pub use macd::{Macd, MacdFix};
 pub use mass::Mass;
 pub use mfi::Mfi;
 pub use mom::Mom;

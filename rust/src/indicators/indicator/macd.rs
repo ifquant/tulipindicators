@@ -15,8 +15,19 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["macd", "macd_signal", "macd_histogram"],
 };
 
+const MACDFIX_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "macdfix",
+    full_name: "Moving Average Convergence/Divergence Fix 12/26",
+    category: IndicatorCategory::Indicator,
+    input_names: &["real"],
+    option_names: &["signal_period"],
+    output_names: &["macd", "macd_signal", "macd_histogram"],
+};
+
 #[derive(Debug, Clone, Copy)]
 pub struct Macd;
+#[derive(Debug, Clone, Copy)]
+pub struct MacdFix;
 
 impl Indicator for Macd {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -84,7 +95,73 @@ impl Indicator for Macd {
     }
 }
 
+impl Indicator for MacdFix {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MACDFIX_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        let _ = parse_signal_only(options)?;
+        Ok(25)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MACDFIX_METADATA.name, inputs)?;
+        let signal_period = parse_signal_only(options)?;
+        let output_len = input.len().saturating_sub(25);
+        let mut macd = vec![0.0; output_len];
+        let mut signal = vec![0.0; output_len];
+        let mut hist = vec![0.0; output_len];
+        let produced = run_macd_batch(
+            input,
+            12,
+            26,
+            signal_period,
+            &mut macd,
+            &mut signal,
+            &mut hist,
+        );
+        debug_assert_eq!(produced, output_len);
+        Ok(vec![macd, signal, hist])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(MACDFIX_METADATA.name, inputs)?;
+        let signal_period = parse_signal_only(options)?;
+        let output_len = input.len().saturating_sub(25);
+        validate_output_slices(&MACDFIX_METADATA, outputs, 3)?;
+        ensure_output_len(&MACDFIX_METADATA, outputs[0].len(), output_len, 0)?;
+        ensure_output_len(&MACDFIX_METADATA, outputs[1].len(), output_len, 1)?;
+        ensure_output_len(&MACDFIX_METADATA, outputs[2].len(), output_len, 2)?;
+        let (macd_slice, rest) = outputs.split_at_mut(1);
+        let (signal_slice, hist_slice) = rest.split_at_mut(1);
+        Ok(run_macd_batch(
+            input,
+            12,
+            26,
+            signal_period,
+            &mut macd_slice[0][..output_len],
+            &mut signal_slice[0][..output_len],
+            &mut hist_slice[0][..output_len],
+        ))
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let signal_period = parse_signal_only(options)?;
+        Ok(Some(Box::new(MacdStream::new_fixed(signal_period))))
+    }
+}
+
 struct MacdStream {
+    metadata: &'static IndicatorMetadata,
     long_period: usize,
     progress: usize,
     short_ema: EmaState,
@@ -98,6 +175,7 @@ impl MacdStream {
         let (short_period, long_period, signal_period) = parse_options(options)?;
         let (short_per, long_per) = ema_pair(short_period, long_period);
         Ok(Self {
+            metadata: &METADATA,
             long_period,
             progress: 0,
             short_ema: EmaState::new(short_per),
@@ -106,11 +184,24 @@ impl MacdStream {
             signal_ema: None,
         })
     }
+
+    fn new_fixed(signal_period: usize) -> Self {
+        let (short_per, long_per) = ema_pair(12, 26);
+        Self {
+            metadata: &MACDFIX_METADATA,
+            long_period: 26,
+            progress: 0,
+            short_ema: EmaState::new(short_per),
+            long_ema: EmaState::new(long_per),
+            signal_multiplier: 2.0 / (signal_period as Real + 1.0),
+            signal_ema: None,
+        }
+    }
 }
 
 impl IndicatorStream for MacdStream {
     fn metadata(&self) -> &'static IndicatorMetadata {
-        &METADATA
+        self.metadata
     }
 
     fn progress(&self) -> usize {
@@ -193,6 +284,11 @@ fn parse_options(options: &[Real]) -> Result<(usize, usize, usize), IndicatorErr
     }
 
     Ok((short_period, long_period, signal_period))
+}
+
+fn parse_signal_only(options: &[Real]) -> Result<usize, IndicatorError> {
+    expect_option_count(MACDFIX_METADATA.name, options, 1)?;
+    parse_usize_option(MACDFIX_METADATA.name, options, 0, "signal_period", 1)
 }
 
 fn ema_pair(short_period: usize, long_period: usize) -> (Real, Real) {

@@ -2,9 +2,9 @@ use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
     Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmf, Cmo, Copp, Cvi, Di, Dm,
     Dpo, Dx, Emv, Fi, Fisher, Fosc, Kst, Kvo, LinReg, LinRegAngle, LinRegIntercept, LinRegSlope,
-    Macd, MarketFi, Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo, Psar, Pvi, Qstick,
-    Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf, Tsi,
-    UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
+    Macd, MacdFix, MarketFi, Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo, Psar, Pvi,
+    Qstick, Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf,
+    Tsi, UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
 };
 use crate::indicators::math::{
     Beta, Correl, CrossAny, Crossover, Decay, EDecay, Lag, Max, MaxIndex, MidPoint, Min, MinIndex,
@@ -81,6 +81,7 @@ pub static LINREGSLOPE: LinRegSlope = LinRegSlope;
 pub static LN: Ln = Ln;
 pub static LOG10: Log10 = Log10;
 pub static MACD: Macd = Macd;
+pub static MACDFIX: MacdFix = MacdFix;
 pub static MAMA: Mama = Mama;
 pub static MARKETFI: MarketFi = MarketFi;
 pub static MASS: Mass = Mass;
@@ -156,7 +157,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 135] {
+pub fn all() -> [&'static dyn Indicator; 136] {
     [
         &ABS,
         &ACOS,
@@ -219,6 +220,7 @@ pub fn all() -> [&'static dyn Indicator; 135] {
         &LN,
         &LOG10,
         &MACD,
+        &MACDFIX,
         &MAMA,
         &MARKETFI,
         &MASS,
@@ -359,6 +361,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "ln" => Some(&LN),
         "log10" => Some(&LOG10),
         "macd" => Some(&MACD),
+        "macdfix" => Some(&MACDFIX),
         "mama" => Some(&MAMA),
         "marketfi" => Some(&MARKETFI),
         "mass" => Some(&MASS),

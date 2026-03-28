@@ -53,7 +53,6 @@
 - `ma`
 - `mavp`
 - `macdext`
-- `macdfix`
 - `sarext`
 - `t3`
 - `ht_*` Hilbert Transform 家族
@@ -97,3 +96,15 @@
 - 都是固定窗口上的双输入统计量，不需要引入 TA-Lib 风格的可变 MA 类型系统
 - 可以直接沿用 Tulip 现有 `period` lookback 和 batch/in-place 风格
 - 但 `beta` 的语义必须按 TA-Lib 源码而不是按注释想当然地实现：它实际输出的是“第二路收益率对第一路收益率”的回归斜率
+
+## 第四批实现
+
+第四批补的是：
+
+- `macdfix`
+
+这一批的特点是：
+
+- 算法本体并不缺，缺的是 TA-Lib 风格的固定 `12/26` API 壳
+- 最适合直接复用现有 `macd` 内核，而不是复制一份三层 EMA 算法
+- parity 最应该盯的是它是否和 `macd(12, 26, signal_period)` 一致

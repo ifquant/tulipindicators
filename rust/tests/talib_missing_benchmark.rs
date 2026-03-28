@@ -16,6 +16,7 @@ const INDICATORS: &[&str] = &[
     "minmaxindex",
     "beta",
     "correl",
+    "macdfix",
 ];
 
 #[test]
