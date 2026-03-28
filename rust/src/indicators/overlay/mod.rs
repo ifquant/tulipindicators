@@ -1,4 +1,6 @@
 mod bbands;
+mod beta_channels;
+mod beta_smoothers;
 mod dema;
 mod ema;
 mod hma;
@@ -14,6 +16,8 @@ mod wma;
 mod zlema;
 
 pub use bbands::Bbands;
+pub use beta_channels::{Abands, Dc, Kc, Pbands, Pc, Vwap};
+pub use beta_smoothers::{Alma, Ikhts, Rmta};
 pub use dema::Dema;
 pub use ema::Ema;
 pub use hma::Hma;

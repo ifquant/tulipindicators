@@ -306,6 +306,9 @@ fn build_options(option_names: &[&str], input_len: usize) -> Vec<Real> {
             "acceleration_factor_step" => 0.02,
             "acceleration_factor_maximum" => 0.2,
             "alpha" => 0.2,
+            "beta" => 0.2,
+            "offset" => 0.85,
+            "sigma" => 6.0,
             other if other.contains("period") => 7.0,
             _ => 2.0,
         })

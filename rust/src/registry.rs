@@ -1,14 +1,14 @@
 use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
-    Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmo, Cvi, Di, Dm, Dpo, Dx, Emv,
-    Fisher, Fosc, Kvo, LinReg, LinRegIntercept, LinRegSlope, Macd, MarketFi, Mass, Md, Mfi, Mom,
-    Msw, Natr, Nvi, Obv, Ppo, Psar, Pvi, Qstick, Roc, Rocr, Rsi, StdDev, StdErr, Stoch, StochRsi,
-    Tr, Trix, Tsf, UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
+    Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmf, Cmo, Cvi, Di, Dm, Dpo, Dx,
+    Emv, Fi, Fisher, Fosc, Kvo, LinReg, LinRegIntercept, LinRegSlope, Macd, MarketFi, Mass, Md,
+    Mfi, Mom, Msw, Natr, Nvi, Obv, Ppo, Psar, Pvi, Qstick, Roc, Rocr, Rsi, StdDev, StdErr, Stoch,
+    StochRsi, Tr, Trix, Tsf, Tsi, UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
 };
 use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, Min, Sum};
 use crate::indicators::overlay::{
-    AvgPrice, Bbands, Dema, Ema, Hma, Kama, MedPrice, Sma, Tema, Trima, TypPrice, Vidya, Vwma,
-    WcPrice, Wilders, Wma, Zlema,
+    Abands, Alma, AvgPrice, Bbands, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, MedPrice, Pbands, Pc,
+    Rmta, Sma, Tema, Trima, TypPrice, Vidya, Vwap, Vwma, WcPrice, Wilders, Wma, Zlema,
 };
 use crate::indicators::simple::{
     Abs, Acos, Add, Asin, Atan, Ceil, Cos, Cosh, Div, Exp, Floor, Ln, Log10, Mul, Round, Sin, Sinh,
@@ -17,6 +17,8 @@ use crate::indicators::simple::{
 
 pub static ABS: Abs = Abs;
 pub static ACOS: Acos = Acos;
+pub static ABANDS: Abands = Abands;
+pub static ALMA: Alma = Alma;
 pub static AD: Ad = Ad;
 pub static ADOSC: AdOsc = AdOsc;
 pub static ADX: Adx = Adx;
@@ -34,6 +36,7 @@ pub static BBANDS: Bbands = Bbands;
 pub static BOP: Bop = Bop;
 pub static CCI: Cci = Cci;
 pub static CEIL: Ceil = Ceil;
+pub static CMF: Cmf = Cmf;
 pub static CMO: Cmo = Cmo;
 pub static COS: Cos = Cos;
 pub static COSH: Cosh = Cosh;
@@ -47,15 +50,19 @@ pub static DIV: Div = Div;
 pub static DM: Dm = Dm;
 pub static DPO: Dpo = Dpo;
 pub static DX: Dx = Dx;
+pub static DC: Dc = Dc;
 pub static EDECAY: EDecay = EDecay;
 pub static EMA: Ema = Ema;
 pub static EMV: Emv = Emv;
 pub static EXP: Exp = Exp;
+pub static FI: Fi = Fi;
 pub static FISHER: Fisher = Fisher;
 pub static FLOOR: Floor = Floor;
 pub static FOSC: Fosc = Fosc;
 pub static HMA: Hma = Hma;
+pub static IKHTS: Ikhts = Ikhts;
 pub static KAMA: Kama = Kama;
+pub static KC: Kc = Kc;
 pub static KVO: Kvo = Kvo;
 pub static LAG: Lag = Lag;
 pub static LINREG: LinReg = LinReg;
@@ -78,11 +85,14 @@ pub static NATR: Natr = Natr;
 pub static NVI: Nvi = Nvi;
 pub static OBV: Obv = Obv;
 pub static PPO: Ppo = Ppo;
+pub static PBANDS: Pbands = Pbands;
+pub static PC: Pc = Pc;
 pub static PSAR: Psar = Psar;
 pub static PVI: Pvi = Pvi;
 pub static QSTICK: Qstick = Qstick;
 pub static ROC: Roc = Roc;
 pub static ROCR: Rocr = Rocr;
+pub static RMTA: Rmta = Rmta;
 pub static RSI: Rsi = Rsi;
 pub static ROUND: Round = Round;
 pub static SMA: Sma = Sma;
@@ -103,6 +113,7 @@ pub static TORAD: ToRad = ToRad;
 pub static TR: Tr = Tr;
 pub static TRIMA: Trima = Trima;
 pub static TRIX: Trix = Trix;
+pub static TSI: Tsi = Tsi;
 pub static TRUNC: Trunc = Trunc;
 pub static TSF: Tsf = Tsf;
 pub static TYPPRICE: TypPrice = TypPrice;
@@ -112,6 +123,7 @@ pub static VHF: Vhf = Vhf;
 pub static VIDYA: Vidya = Vidya;
 pub static VOLATILITY: Volatility = Volatility;
 pub static VOSC: Vosc = Vosc;
+pub static VWAP: Vwap = Vwap;
 pub static VWMA: Vwma = Vwma;
 pub static WAD: Wad = Wad;
 pub static WCPRICE: WcPrice = WcPrice;
@@ -120,10 +132,12 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 104] {
+pub fn all() -> [&'static dyn Indicator; 116] {
     [
         &ABS,
         &ACOS,
+        &ABANDS,
+        &ALMA,
         &AD,
         &ADOSC,
         &ADD,
@@ -141,6 +155,7 @@ pub fn all() -> [&'static dyn Indicator; 104] {
         &BOP,
         &CCI,
         &CEIL,
+        &CMF,
         &CMO,
         &COS,
         &COSH,
@@ -151,6 +166,7 @@ pub fn all() -> [&'static dyn Indicator; 104] {
         &DEMA,
         &DI,
         &DIV,
+        &DC,
         &DM,
         &DPO,
         &DX,
@@ -158,11 +174,14 @@ pub fn all() -> [&'static dyn Indicator; 104] {
         &EMA,
         &EMV,
         &EXP,
+        &FI,
         &FISHER,
         &FLOOR,
         &FOSC,
         &HMA,
+        &IKHTS,
         &KAMA,
+        &KC,
         &KVO,
         &LAG,
         &LINREG,
@@ -185,11 +204,14 @@ pub fn all() -> [&'static dyn Indicator; 104] {
         &NVI,
         &OBV,
         &PPO,
+        &PBANDS,
+        &PC,
         &PSAR,
         &PVI,
         &QSTICK,
         &ROC,
         &ROCR,
+        &RMTA,
         &ROUND,
         &RSI,
         &SIN,
@@ -210,6 +232,7 @@ pub fn all() -> [&'static dyn Indicator; 104] {
         &TR,
         &TRIMA,
         &TRIX,
+        &TSI,
         &TRUNC,
         &TSF,
         &TYPPRICE,
@@ -219,6 +242,7 @@ pub fn all() -> [&'static dyn Indicator; 104] {
         &VIDYA,
         &VOLATILITY,
         &VOSC,
+        &VWAP,
         &VWMA,
         &WAD,
         &WCPRICE,
@@ -233,6 +257,8 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
     match name {
         "abs" => Some(&ABS),
         "acos" => Some(&ACOS),
+        "abands" => Some(&ABANDS),
+        "alma" => Some(&ALMA),
         "ad" => Some(&AD),
         "adosc" => Some(&ADOSC),
         "add" => Some(&ADD),
@@ -250,6 +276,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "bop" => Some(&BOP),
         "cci" => Some(&CCI),
         "ceil" => Some(&CEIL),
+        "cmf" => Some(&CMF),
         "cmo" => Some(&CMO),
         "cos" => Some(&COS),
         "cosh" => Some(&COSH),
@@ -258,6 +285,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "cvi" => Some(&CVI),
         "decay" => Some(&DECAY),
         "dema" => Some(&DEMA),
+        "dc" => Some(&DC),
         "di" => Some(&DI),
         "div" => Some(&DIV),
         "dm" => Some(&DM),
@@ -267,11 +295,14 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "ema" => Some(&EMA),
         "emv" => Some(&EMV),
         "exp" => Some(&EXP),
+        "fi" => Some(&FI),
         "fisher" => Some(&FISHER),
         "floor" => Some(&FLOOR),
         "fosc" => Some(&FOSC),
         "hma" => Some(&HMA),
+        "ikhts" => Some(&IKHTS),
         "kama" => Some(&KAMA),
+        "kc" => Some(&KC),
         "kvo" => Some(&KVO),
         "lag" => Some(&LAG),
         "linreg" => Some(&LINREG),
@@ -294,11 +325,14 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "nvi" => Some(&NVI),
         "obv" => Some(&OBV),
         "ppo" => Some(&PPO),
+        "pbands" => Some(&PBANDS),
+        "pc" => Some(&PC),
         "psar" => Some(&PSAR),
         "pvi" => Some(&PVI),
         "qstick" => Some(&QSTICK),
         "roc" => Some(&ROC),
         "rocr" => Some(&ROCR),
+        "rmta" => Some(&RMTA),
         "rsi" => Some(&RSI),
         "round" => Some(&ROUND),
         "sma" => Some(&SMA),
@@ -319,6 +353,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "tr" => Some(&TR),
         "trima" => Some(&TRIMA),
         "trix" => Some(&TRIX),
+        "tsi" => Some(&TSI),
         "trunc" => Some(&TRUNC),
         "tsf" => Some(&TSF),
         "typprice" => Some(&TYPPRICE),
@@ -328,6 +363,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "vidya" => Some(&VIDYA),
         "volatility" => Some(&VOLATILITY),
         "vosc" => Some(&VOSC),
+        "vwap" => Some(&VWAP),
         "vwma" => Some(&VWMA),
         "wad" => Some(&WAD),
         "wcprice" => Some(&WCPRICE),
