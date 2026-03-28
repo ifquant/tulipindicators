@@ -101,8 +101,33 @@ impl Indicator for Cci {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = CciStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low, close) = triple_input(CCI_METADATA.name, inputs)?;
+        let period = parse_period(CCI_METADATA.name, options)?;
+        let output_len = high.len().saturating_sub((period - 1) * 2);
+        let mut output = vec![0.0; output_len];
+        let produced = run_cci_batch(high, low, close, period, &mut output);
+        debug_assert_eq!(produced, output_len);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low, close) = triple_input(CCI_METADATA.name, inputs)?;
+        let period = parse_period(CCI_METADATA.name, options)?;
+        let output_len = high.len().saturating_sub((period - 1) * 2);
+        validate_output_slices(&CCI_METADATA, outputs, 1)?;
+        ensure_output_len(&CCI_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_cci_batch(
+            high,
+            low,
+            close,
+            period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -384,6 +409,59 @@ impl IndicatorStream for CciStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_cci_batch(
+    high: &[Real],
+    low: &[Real],
+    close: &[Real],
+    period: usize,
+    output: &mut [Real],
+) -> usize {
+    if high.len() <= (period - 1) * 2 {
+        return 0;
+    }
+
+    let scale = 1.0 / period as Real;
+    let mut values = vec![0.0; period];
+    let mut ring_index = 0usize;
+    let mut len = 0usize;
+    let mut sum = 0.0;
+    let mut out_index = 0usize;
+
+    for index in 0..high.len() {
+        let today = (high[index] + low[index] + close[index]) * (1.0 / 3.0);
+        if len < period {
+            values[len] = today;
+            len += 1;
+            sum += today;
+            if len < period {
+                continue;
+            }
+            ring_index = 0;
+        } else {
+            sum += today - values[ring_index];
+            values[ring_index] = today;
+            ring_index += 1;
+            if ring_index == period {
+                ring_index = 0;
+            }
+        }
+
+        if index >= period * 2 - 2 {
+            let avg = sum * scale;
+            let mut acc = 0.0;
+            for value in &values {
+                acc += (avg - *value).abs();
+            }
+            let mut cci = acc * scale;
+            cci *= 0.015;
+            output[out_index] = (today - avg) / cci;
+            out_index += 1;
+        }
+    }
+
+    out_index
 }
 
 struct CmoStream {
