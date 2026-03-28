@@ -141,13 +141,10 @@ fn run_wilders_batch(input: &[Real], period: usize, output: &mut [Real]) -> usiz
 
     let mut value = sum / period as Real;
     output[0] = value;
-    let mut out_index = 1usize;
-
-    for &sample in &input[period..] {
+    for (dst, &sample) in output[1..].iter_mut().zip(&input[period..]) {
         value = (sample - value) * per + value;
-        output[out_index] = value;
-        out_index += 1;
+        *dst = value;
     }
 
-    out_index
+    output.len()
 }

@@ -553,8 +553,32 @@ impl Indicator for Vosc {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = VoscStream::new(options)?;
-        stream.feed(inputs)
+        let input = single_input(VOSC_METADATA.name, inputs)?;
+        let (short_period, long_period) = parse_short_long(VOSC_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(long_period - 1);
+        let mut output = vec![0.0; output_len];
+        let produced = run_vosc_batch(input, short_period, long_period, &mut output);
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(VOSC_METADATA.name, inputs)?;
+        let (short_period, long_period) = parse_short_long(VOSC_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(long_period - 1);
+        validate_output_slices(&VOSC_METADATA, outputs, 1)?;
+        ensure_output_len(&VOSC_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_vosc_batch(
+            input,
+            short_period,
+            long_period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -1091,6 +1115,45 @@ fn run_wad_batch(high: &[Real], low: &[Real], close: &[Real], output: &mut [Real
         }
         *dst = sum;
         previous_close = close;
+    }
+
+    output.len()
+}
+
+fn run_vosc_batch(
+    input: &[Real],
+    short_period: usize,
+    long_period: usize,
+    output: &mut [Real],
+) -> usize {
+    if input.len() < long_period {
+        return 0;
+    }
+
+    let short_div = 1.0 / short_period as Real;
+    let long_div = 1.0 / long_period as Real;
+    let mut short_sum = 0.0;
+    let mut long_sum = 0.0;
+
+    for (index, &sample) in input.iter().take(long_period).enumerate() {
+        if index >= long_period - short_period {
+            short_sum += sample;
+        }
+        long_sum += sample;
+    }
+
+    let mut long_avg = long_sum * long_div;
+    output[0] = 100.0 * (short_sum * short_div - long_avg) / long_avg;
+
+    for (dst, index) in output[1..].iter_mut().zip(long_period..input.len()) {
+        short_sum += input[index];
+        short_sum -= input[index - short_period];
+
+        long_sum += input[index];
+        long_sum -= input[index - long_period];
+
+        long_avg = long_sum * long_div;
+        *dst = 100.0 * (short_sum * short_div - long_avg) / long_avg;
     }
 
     output.len()
