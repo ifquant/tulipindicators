@@ -12,6 +12,7 @@ const DEFAULT_SIZES: &[usize] = &[256, 4096, 65_536, 262_144];
 const DEFAULT_STREAM_CHUNK: usize = 1024;
 const DEFAULT_MIN_ITERATIONS: usize = 16;
 const DEFAULT_TARGET_MS: u64 = 1_000;
+const DEFAULT_CALIBRATION_MS: u64 = 50;
 const DEFAULT_REPEATS: usize = 3;
 
 #[derive(Debug, Clone)]
@@ -20,6 +21,7 @@ pub struct BenchmarkConfig {
     pub stream_chunk_size: usize,
     pub min_iterations: usize,
     pub target_duration: Duration,
+    pub calibration_duration: Duration,
     pub repeats: usize,
     pub output_dir: PathBuf,
 }
@@ -31,6 +33,7 @@ impl Default for BenchmarkConfig {
             stream_chunk_size: DEFAULT_STREAM_CHUNK,
             min_iterations: DEFAULT_MIN_ITERATIONS,
             target_duration: Duration::from_millis(DEFAULT_TARGET_MS),
+            calibration_duration: Duration::from_millis(DEFAULT_CALIBRATION_MS),
             repeats: DEFAULT_REPEATS,
             output_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("target")
@@ -70,6 +73,14 @@ impl BenchmarkConfig {
             if let Ok(value) = raw.parse::<u64>() {
                 if value > 0 {
                     config.target_duration = Duration::from_millis(value);
+                }
+            }
+        }
+
+        if let Ok(raw) = std::env::var("TI_BENCH_CALIBRATION_MS") {
+            if let Ok(value) = raw.parse::<u64>() {
+                if value > 0 {
+                    config.calibration_duration = Duration::from_millis(value);
                 }
             }
         }
@@ -244,7 +255,6 @@ fn run_batch_benchmark(
     let output_len = output_len_for_input(scenario.inputs[0].len(), lookback);
     let total_outputs = output_len * metadata.output_names.len();
     let mut output_buffers = vec![vec![0.0; output_len]; metadata.output_names.len()];
-    let iterations = choose_iterations(scenario.inputs[0].len(), config);
     {
         let mut outputs: Vec<&mut [Real]> =
             output_buffers.iter_mut().map(Vec::as_mut_slice).collect();
@@ -258,6 +268,23 @@ fn run_batch_benchmark(
             });
         }
     }
+    let iterations = calibrate_iterations(config, |runs| {
+        for _ in 0..runs {
+            let mut outputs: Vec<&mut [Real]> =
+                output_buffers.iter_mut().map(Vec::as_mut_slice).collect();
+            let produced =
+                scenario
+                    .indicator
+                    .run_in_place(&inputs, &scenario.options, &mut outputs)?;
+            let sink = outputs
+                .first()
+                .and_then(|output| output.get(produced.saturating_sub(1)))
+                .copied()
+                .unwrap_or(0.0);
+            black_box((produced, sink));
+        }
+        Ok(())
+    })?;
 
     let mut samples = Vec::with_capacity(config.repeats);
     for _ in 0..config.repeats {
@@ -306,7 +333,22 @@ fn run_stream_benchmark(
         &scenario.inputs,
         config.stream_chunk_size,
     )?;
-    let iterations = choose_iterations(scenario.inputs[0].len(), config);
+    let iterations = calibrate_iterations(config, |runs| {
+        for _ in 0..runs {
+            let mut stream = scenario.indicator.create_stream(&scenario.options)?.ok_or(
+                IndicatorError::MissingStreamSupport {
+                    indicator: scenario.indicator.metadata().name,
+                },
+            )?;
+            let outputs = collect_stream_outputs(
+                stream.as_mut(),
+                &scenario.inputs,
+                config.stream_chunk_size,
+            )?;
+            black_box(outputs);
+        }
+        Ok(())
+    })?;
 
     let mut samples = Vec::with_capacity(config.repeats);
     for _ in 0..config.repeats {
@@ -370,11 +412,27 @@ fn collect_stream_outputs(
     Ok(total_outputs)
 }
 
-fn choose_iterations(input_len: usize, config: &BenchmarkConfig) -> usize {
-    let target_work = 1_000_000usize.saturating_mul(config.target_duration.as_millis() as usize)
-        / DEFAULT_TARGET_MS as usize;
-    let iterations = target_work / input_len.max(1);
-    iterations.max(config.min_iterations)
+fn calibrate_iterations<F>(config: &BenchmarkConfig, mut run: F) -> Result<usize, IndicatorError>
+where
+    F: FnMut(usize) -> Result<(), IndicatorError>,
+{
+    let mut runs = 1usize;
+    let max_runs = 1usize << 20;
+
+    let elapsed = loop {
+        let start = Instant::now();
+        run(runs)?;
+        let elapsed = start.elapsed();
+        if elapsed >= config.calibration_duration || runs >= max_runs {
+            break elapsed;
+        }
+        runs = runs.saturating_mul(2).min(max_runs);
+    };
+
+    let elapsed_ns = elapsed.as_nanos().max(1);
+    let target_ns = config.target_duration.as_nanos();
+    let estimated = target_ns.saturating_mul(runs as u128).div_ceil(elapsed_ns) as usize;
+    Ok(estimated.max(config.min_iterations))
 }
 
 fn median_duration(mut samples: Vec<Duration>) -> Duration {

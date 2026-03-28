@@ -9,6 +9,7 @@
 #define DEFAULT_STREAM_CHUNK 1024
 #define DEFAULT_MIN_ITERATIONS 16
 #define DEFAULT_TARGET_MS 1000
+#define DEFAULT_CALIBRATION_MS 50
 #define DEFAULT_REPEATS 3
 
 typedef struct {
@@ -17,6 +18,7 @@ typedef struct {
     int stream_chunk_size;
     int min_iterations;
     int target_ms;
+    int calibration_ms;
     int repeats;
     char *indicator_filter;
 } bench_config;
@@ -130,6 +132,8 @@ static void load_config(bench_config *config) {
     config->min_iterations =
         parse_positive_int(getenv("TI_BENCH_MIN_ITERATIONS"), DEFAULT_MIN_ITERATIONS);
     config->target_ms = parse_positive_int(getenv("TI_BENCH_TARGET_MS"), DEFAULT_TARGET_MS);
+    config->calibration_ms =
+        parse_positive_int(getenv("TI_BENCH_CALIBRATION_MS"), DEFAULT_CALIBRATION_MS);
     config->repeats = parse_positive_int(getenv("TI_BENCH_REPEATS"), DEFAULT_REPEATS);
     if (indicator_filter && *indicator_filter) {
         const size_t len = strlen(indicator_filter);
@@ -145,9 +149,18 @@ static void free_config(bench_config *config) {
     free(config->indicator_filter);
 }
 
-static int choose_iterations(int input_len, const bench_config *config) {
-    const int target_work = (1000000 * config->target_ms) / DEFAULT_TARGET_MS;
-    int iterations = target_work / (input_len > 0 ? input_len : 1);
+static int iterations_from_calibration(double elapsed_ms, int runs, const bench_config *config) {
+    double scaled;
+    int iterations;
+    if (elapsed_ms <= 0.0) {
+        return config->min_iterations;
+    }
+    scaled = ((double)config->target_ms * (double)runs) / elapsed_ms;
+    if (scaled > (double)2147483647) {
+        iterations = 2147483647;
+    } else {
+        iterations = (int)ceil(scaled);
+    }
     if (iterations < config->min_iterations) {
         iterations = config->min_iterations;
     }
@@ -298,7 +311,7 @@ static int run_batch_benchmark(
     const int start = info->start(options);
     const int output_len = input_len - start;
     const int total_outputs = output_len > 0 ? output_len * info->outputs : 0;
-    const int iterations = choose_iterations(input_len, config);
+    int iterations = config->min_iterations;
     int i;
     int j;
 
@@ -307,6 +320,29 @@ static int run_batch_benchmark(
         if (!outputs[i]) {
             return TI_OUT_OF_MEMORY;
         }
+    }
+
+    {
+        int calibration_runs = 1;
+        double calibration_ms = 0.0;
+        while (1) {
+            const double calibration_start_ms = now_ms();
+            for (i = 0; i < calibration_runs; ++i) {
+                const int rc = info->indicator(input_len, inputs, options, outputs);
+                if (rc != TI_OKAY) {
+                    return rc;
+                }
+                if (output_len > 0 && info->outputs > 0) {
+                    bench_sink += outputs[0][output_len - 1];
+                }
+            }
+            calibration_ms = now_ms() - calibration_start_ms;
+            if (calibration_ms >= (double)config->calibration_ms || calibration_runs >= (1 << 20)) {
+                break;
+            }
+            calibration_runs *= 2;
+        }
+        iterations = iterations_from_calibration(calibration_ms, calibration_runs, config);
     }
 
     {
@@ -361,8 +397,9 @@ static int run_stream_benchmark(
     bench_result *result
 ) {
     const int start = info->start(options);
-    const int iterations = choose_iterations(input_len, config);
+    int iterations = config->min_iterations;
     TI_REAL *chunk_outputs[TI_MAXINDPARAMS] = {0};
+    int i;
     int j;
     int total_outputs = 0;
 
@@ -408,13 +445,63 @@ static int run_stream_benchmark(
     }
 
     {
+        int calibration_runs = 1;
+        double calibration_ms = 0.0;
+        while (1) {
+            const double calibration_start_ms = now_ms();
+            for (i = 0; i < calibration_runs; ++i) {
+                ti_stream *stream = 0;
+                const int create_rc = info->stream_new(options, &stream);
+                int start_index = 0;
+                if (create_rc != TI_OKAY) {
+                    return create_rc;
+                }
+                while (start_index < input_len) {
+                    const int end = start_index + config->stream_chunk_size < input_len
+                        ? start_index + config->stream_chunk_size
+                        : input_len;
+                    const int chunk_len = end - start_index;
+                    const TI_REAL *chunk_inputs[TI_MAXINDPARAMS] = {0};
+                    const int progress_before = ti_stream_get_progress(stream);
+                    int delta_outputs;
+                    for (j = 0; j < info->inputs; ++j) {
+                        chunk_inputs[j] = inputs[j] + start_index;
+                    }
+                    {
+                        const int rc = ti_stream_run(stream, chunk_len, chunk_inputs, chunk_outputs);
+                        if (rc != TI_OKAY) {
+                            ti_stream_free(stream);
+                            return rc;
+                        }
+                    }
+                    delta_outputs = stream_outputs_delta(
+                        progress_before,
+                        ti_stream_get_progress(stream),
+                        start
+                    );
+                    if (delta_outputs > 0 && info->outputs > 0) {
+                        bench_sink += chunk_outputs[0][delta_outputs - 1];
+                    }
+                    start_index = end;
+                }
+                ti_stream_free(stream);
+            }
+            calibration_ms = now_ms() - calibration_start_ms;
+            if (calibration_ms >= (double)config->calibration_ms || calibration_runs >= (1 << 20)) {
+                break;
+            }
+            calibration_runs *= 2;
+        }
+        iterations = iterations_from_calibration(calibration_ms, calibration_runs, config);
+    }
+
+    {
         double *samples = calloc((size_t)config->repeats, sizeof(double));
         int repeat_index;
         if (!samples) {
             return TI_OUT_OF_MEMORY;
         }
         for (repeat_index = 0; repeat_index < config->repeats; ++repeat_index) {
-            int i;
             const double start_ms = now_ms();
             for (i = 0; i < iterations; ++i) {
                 ti_stream *stream = 0;
