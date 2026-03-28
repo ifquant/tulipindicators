@@ -7,6 +7,9 @@ use tulipindicators::benchmark::{run_named_benchmarks, BenchmarkConfig, Benchmar
 
 const INDICATORS: &[&str] = &[
     "linearregangle",
+    "ma",
+    "macdext",
+    "mavp",
     "midpoint",
     "midprice",
     "rocr100",
@@ -17,6 +20,7 @@ const INDICATORS: &[&str] = &[
     "beta",
     "correl",
     "macdfix",
+    "t3",
 ];
 
 #[test]

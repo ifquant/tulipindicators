@@ -261,10 +261,20 @@ static TI_REAL option_value(const char *name, int input_len) {
     if (strcmp(name, "acceleration_factor_maximum") == 0) return 0.2;
     if (strcmp(name, "alpha") == 0) return 0.2;
     if (strcmp(name, "beta") == 0) return 0.2;
+    if (strcmp(name, "ma_type") == 0) return 0.0;
+    if (strcmp(name, "fast_ma_type") == 0) return 1.0;
+    if (strcmp(name, "slow_ma_type") == 0) return 1.0;
+    if (strcmp(name, "signal_ma_type") == 0) return 1.0;
     if (strcmp(name, "fastlimit") == 0) return 0.5;
     if (strcmp(name, "slowlimit") == 0) return 0.05;
     if (strcmp(name, "offset") == 0) return 0.85;
     if (strcmp(name, "sigma") == 0) return 6.0;
+    if (strcmp(name, "vfactor") == 0) return 0.7;
+    if (strcmp(name, "min_period") == 0) return 2.0;
+    if (strcmp(name, "max_period") == 0) {
+        TI_REAL period = default_period(input_len);
+        return period < 2.0 ? 2.0 : period;
+    }
     if (strstr(name, "period")) return 7.0;
     return 2.0;
 }
@@ -340,6 +350,8 @@ static void build_inputs(
             inputs[i] = low;
         } else if (strcmp(name, "volume") == 0) {
             inputs[i] = volume;
+        } else if (strcmp(name, "periods") == 0) {
+            inputs[i] = open;
         } else {
             inputs[i] = close;
         }

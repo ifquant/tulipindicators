@@ -1022,10 +1022,17 @@ fn build_options(option_names: &[&str], input_len: usize) -> Vec<Real> {
             "acceleration_factor_maximum" => 0.2,
             "alpha" => 0.2,
             "beta" => 0.2,
+            "ma_type" => 0.0,
+            "fast_ma_type" => 1.0,
+            "slow_ma_type" => 1.0,
+            "signal_ma_type" => 1.0,
             "fastlimit" => 0.5,
             "slowlimit" => 0.05,
             "offset" => 0.85,
             "sigma" => 6.0,
+            "vfactor" => 0.7,
+            "min_period" => 2.0,
+            "max_period" => default_period(input_len).max(2.0),
             other if other.contains("period") => 7.0,
             _ => 2.0,
         })
@@ -1058,6 +1065,9 @@ fn build_inputs(input_names: &[&str], input_len: usize) -> Vec<Vec<Real>> {
                 .map(|(index, close_value)| close_value - 0.35 - ((index % 5) as Real * 0.03))
                 .collect(),
             "volume" => volume.clone(),
+            "periods" => (0..input_len)
+                .map(|index| 2.0 + (index % 7) as Real)
+                .collect(),
             _ => close.clone(),
         })
         .collect()

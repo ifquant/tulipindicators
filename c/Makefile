@@ -6,6 +6,7 @@ CCFLAGS ?= -Wall -Wextra -Wshadow -Wconversion -std=c99 -pedantic -O2 -g
 
 SRCS=$(wildcard indicators/*.c)
 SRCS+=$(wildcard utils/*.c)
+SRCS+=$(wildcard beta/mama.c)
 OBJS=$(SRCS:%.c=%.o)
 AMAL=$(SRCS:%.c=%.ca)
 

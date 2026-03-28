@@ -50,8 +50,9 @@ lappend indicators [list overlay "Arnaud Legoux Moving Average" alma 1 3 1 {real
 lappend indicators [list overlay "Double Exponential Moving Average" dema 1 1 1 {real} {period} {dema}]
 lappend indicators [list overlay "Exponential Moving Average" ema 1 1 1 {real} {period} {ema}]
 lappend indicators [list overlay "Hull Moving Average" hma 1 1 1 {real} {period} {hma}]
-lappend indicators [list overlay "MESA Adaptive Moving Average" mama 1 2 2 {real} {{fast limit} {slow limit}} {mama fama} {ref stream beta}]
+lappend indicators [list overlay "MESA Adaptive Moving Average" mama 1 2 2 {real} {{fast limit} {slow limit}} {mama fama} {ref stream}]
 lappend indicators [list overlay "Simple Moving Average" sma 1 1 1 {real} {period} {sma} {stream}]
+lappend indicators [list overlay "T3 Moving Average" t3 1 2 1 {real} {period vfactor} {t3}]
 lappend indicators [list overlay "Triple Exponential Moving Average" tema 1 1 1 {real} {period} {tema}]
 lappend indicators [list overlay "Triangular Moving Average" trima 1 1 1 {real} {period} {trima}]
 lappend indicators [list overlay "Variable Index Dynamic Average" vidya 1 3 1 {real} {{short_period} {long_period} alpha} {vidya}]
@@ -60,6 +61,8 @@ lappend indicators [list overlay "Volume Weighted Average Price" vwap 4 1 1 {hig
 lappend indicators [list overlay "Wilders Smoothing" wilders 1 1 1 {real} {period} {wilders}]
 lappend indicators [list overlay "Weighted Moving Average" wma 1 1 1 {real} {period} {wma}]
 lappend indicators [list overlay "Zero-Lag Exponential Moving Average" zlema 1 1 1 {real} {period} {zlema}]
+lappend indicators [list overlay "Moving Average" ma 1 2 1 {real} {period ma_type} {ma}]
+lappend indicators [list overlay "Moving Average With Variable Period" mavp 2 3 1 {real periods} {min_period max_period ma_type} {mavp}]
 
 #Line fitting
 lappend indicators [list overlay "Linear Regression" linreg 1 1 1 {real} {period} {linreg}]
@@ -102,6 +105,7 @@ lappend indicators [list indicator "Mass Index" mass 2 1 1 {high low} {period} {
 lappend indicators [list indicator "Money Flow Index" mfi 4 1 1 {high low close volume} {period} {mfi}]
 lappend indicators [list indicator "Moving Average Convergence/Divergence" macd 1 3 3 {real} {{short_period} {long_period} {signal_period}} {macd macd_signal macd_histogram}]
 lappend indicators [list indicator "Moving Average Convergence/Divergence Fix 12/26" macdfix 1 1 3 {real} {signal_period} {macd macd_signal macd_histogram}]
+lappend indicators [list indicator "Moving Average Convergence/Divergence Extended" macdext 1 6 3 {real} {{fast_period} {fast_ma_type} {slow_period} {slow_ma_type} {signal_period} {signal_ma_type}} {macd macd_signal macd_histogram}]
 lappend indicators [list indicator "Negative Volume Index" nvi 2 0 1 {close volume} {} {nvi}]
 lappend indicators [list indicator "On Balance Volume" obv 2 0 1 {close volume} {} {obv}]
 lappend indicators [list indicator "Percentage Price Oscillator" ppo 1 2 1 {real} {{short_period} {long_period}} {ppo}]

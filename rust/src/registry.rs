@@ -2,18 +2,18 @@ use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
     Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmf, Cmo, Copp, Cvi, Di, Dm,
     Dpo, Dx, Emv, Fi, Fisher, Fosc, Kst, Kvo, LinReg, LinRegAngle, LinRegIntercept, LinRegSlope,
-    Macd, MacdFix, MarketFi, Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo, Psar, Pvi,
-    Qstick, Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf,
-    Tsi, UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
+    Macd, MacdExt, MacdFix, MarketFi, Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo,
+    Psar, Pvi, Qstick, Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr,
+    Trix, Tsf, Tsi, UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
 };
 use crate::indicators::math::{
     Beta, Correl, CrossAny, Crossover, Decay, EDecay, Lag, Max, MaxIndex, MidPoint, Min, MinIndex,
     MinMax, MinMaxIndex, Sum,
 };
 use crate::indicators::overlay::{
-    Abands, Alma, AvgPrice, Bbands, Ce, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, Mama, MedPrice,
-    MidPrice, Pbands, Pc, Rmta, Sma, Tema, Trima, TypPrice, Vidya, Vwap, Vwma, WcPrice, Wilders,
-    Wma, Zlema,
+    Abands, Alma, AvgPrice, Bbands, Ce, Dc, Dema, Ema, Hma, Ikhts, Kama, Kc, Ma, Mama, Mavp,
+    MedPrice, MidPrice, Pbands, Pc, Rmta, Sma, Tema, Trima, TypPrice, Vidya, Vwap, Vwma, WcPrice,
+    Wilders, Wma, Zlema, T3 as T3Indicator,
 };
 use crate::indicators::simple::{
     Abs, Acos, Add, Asin, Atan, Ceil, Cos, Cosh, Div, Exp, Floor, Ln, Log10, Mul, Round, Sin, Sinh,
@@ -81,8 +81,11 @@ pub static LINREGSLOPE: LinRegSlope = LinRegSlope;
 pub static LN: Ln = Ln;
 pub static LOG10: Log10 = Log10;
 pub static MACD: Macd = Macd;
+pub static MACDEXT: MacdExt = MacdExt;
 pub static MACDFIX: MacdFix = MacdFix;
+pub static MA: Ma = Ma;
 pub static MAMA: Mama = Mama;
+pub static MAVP: Mavp = Mavp;
 pub static MARKETFI: MarketFi = MarketFi;
 pub static MASS: Mass = Mass;
 pub static MAX: Max = Max;
@@ -119,6 +122,7 @@ pub static RSI: Rsi = Rsi;
 pub static RVI: Rvi = Rvi;
 pub static ROUND: Round = Round;
 pub static SMA: Sma = Sma;
+pub static T3: T3Indicator = T3Indicator;
 pub static SIN: Sin = Sin;
 pub static SINH: Sinh = Sinh;
 pub static SMI: Smi = Smi;
@@ -157,7 +161,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 136] {
+pub fn all() -> [&'static dyn Indicator; 140] {
     [
         &ABS,
         &ACOS,
@@ -220,8 +224,11 @@ pub fn all() -> [&'static dyn Indicator; 136] {
         &LN,
         &LOG10,
         &MACD,
+        &MACDEXT,
         &MACDFIX,
+        &MA,
         &MAMA,
+        &MAVP,
         &MARKETFI,
         &MASS,
         &MAX,
@@ -270,6 +277,7 @@ pub fn all() -> [&'static dyn Indicator; 136] {
         &SUM,
         &TAN,
         &TANH,
+        &T3,
         &TEMA,
         &TODEG,
         &TORAD,
@@ -361,8 +369,11 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "ln" => Some(&LN),
         "log10" => Some(&LOG10),
         "macd" => Some(&MACD),
+        "macdext" => Some(&MACDEXT),
         "macdfix" => Some(&MACDFIX),
+        "ma" => Some(&MA),
         "mama" => Some(&MAMA),
+        "mavp" => Some(&MAVP),
         "marketfi" => Some(&MARKETFI),
         "mass" => Some(&MASS),
         "max" => Some(&MAX),
@@ -411,6 +422,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "sum" => Some(&SUM),
         "tan" => Some(&TAN),
         "tanh" => Some(&TANH),
+        "t3" => Some(&T3),
         "tema" => Some(&TEMA),
         "todeg" => Some(&TODEG),
         "torad" => Some(&TORAD),
