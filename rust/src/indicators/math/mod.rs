@@ -212,16 +212,25 @@ impl Indicator for Crossover {
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         expect_option_count(CROSSOVER_METADATA.name, options, 0)?;
         let (left, right) = double_input(CROSSOVER_METADATA.name, inputs)?;
-        let mut output = Vec::with_capacity(left.len().saturating_sub(1));
+        let output_len = left.len().saturating_sub(1);
+        let mut output = vec![0.0; output_len];
 
-        for index in 1..left.len() {
-            output.push(
-                if left[index] > right[index] && left[index - 1] <= right[index - 1] {
-                    1.0
-                } else {
-                    0.0
-                },
-            );
+        if output_len == 0 {
+            return Ok(vec![output]);
+        }
+
+        let mut prev_left = left[0];
+        let mut prev_right = right[0];
+        for index in 0..output_len {
+            let current_left = left[index + 1];
+            let current_right = right[index + 1];
+            output[index] = if current_left > current_right && prev_left <= prev_right {
+                1.0
+            } else {
+                0.0
+            };
+            prev_left = current_left;
+            prev_right = current_right;
         }
 
         Ok(vec![output])
@@ -239,12 +248,22 @@ impl Indicator for Crossover {
         validate_output_slices(&CROSSOVER_METADATA, outputs, 1)?;
         ensure_output_len(&CROSSOVER_METADATA, outputs[0].len(), output_len, 0)?;
 
-        for (dst, index) in outputs[0][..output_len].iter_mut().zip(1..left.len()) {
-            *dst = if left[index] > right[index] && left[index - 1] <= right[index - 1] {
+        if output_len == 0 {
+            return Ok(0);
+        }
+
+        let mut prev_left = left[0];
+        let mut prev_right = right[0];
+        for index in 0..output_len {
+            let current_left = left[index + 1];
+            let current_right = right[index + 1];
+            outputs[0][index] = if current_left > current_right && prev_left <= prev_right {
                 1.0
             } else {
                 0.0
             };
+            prev_left = current_left;
+            prev_right = current_right;
         }
 
         Ok(output_len)
