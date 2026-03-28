@@ -107,6 +107,7 @@ fn stream_outputs_match_batch_outputs_for_chunked_runs() {
 fn default_options(indicator: &str) -> Vec<Real> {
     match indicator {
         "bbands" => vec![5.0, 2.0],
+        "kst" => vec![10.0, 15.0, 20.0, 30.0, 10.0, 10.0, 10.0, 15.0],
         "macd" => vec![12.0, 26.0, 9.0],
         "psar" => vec![0.02, 0.2],
         "ultosc" => vec![5.0, 7.0, 10.0],

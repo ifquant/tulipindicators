@@ -1,9 +1,10 @@
 use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
-    Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmf, Cmo, Cvi, Di, Dm, Dpo, Dx,
-    Emv, Fi, Fisher, Fosc, Kvo, LinReg, LinRegIntercept, LinRegSlope, Macd, MarketFi, Mass, Md,
-    Mfi, Mom, Msw, Natr, Nvi, Obv, Ppo, Psar, Pvi, Qstick, Roc, Rocr, Rsi, StdDev, StdErr, Stoch,
-    StochRsi, Tr, Trix, Tsf, Tsi, UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
+    Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmf, Cmo, Copp, Cvi, Di, Dm,
+    Dpo, Dx, Emv, Fi, Fisher, Fosc, Kst, Kvo, LinReg, LinRegIntercept, LinRegSlope, Macd, MarketFi,
+    Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Ppo, Psar, Pvi, Qstick, Rmi, Roc, Rocr, Rsi,
+    StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf, Tsi, UltOsc, Var, Vhf, Volatility, Vosc, Wad,
+    WillR,
 };
 use crate::indicators::math::{CrossAny, Crossover, Decay, EDecay, Lag, Max, Min, Sum};
 use crate::indicators::overlay::{
@@ -38,6 +39,7 @@ pub static CCI: Cci = Cci;
 pub static CEIL: Ceil = Ceil;
 pub static CMF: Cmf = Cmf;
 pub static CMO: Cmo = Cmo;
+pub static COPP: Copp = Copp;
 pub static COS: Cos = Cos;
 pub static COSH: Cosh = Cosh;
 pub static CROSSANY: CrossAny = CrossAny;
@@ -84,12 +86,14 @@ pub static MUL: Mul = Mul;
 pub static NATR: Natr = Natr;
 pub static NVI: Nvi = Nvi;
 pub static OBV: Obv = Obv;
+pub static PFE: Pfe = Pfe;
 pub static PPO: Ppo = Ppo;
 pub static PBANDS: Pbands = Pbands;
 pub static PC: Pc = Pc;
 pub static PSAR: Psar = Psar;
 pub static PVI: Pvi = Pvi;
 pub static QSTICK: Qstick = Qstick;
+pub static RMI: Rmi = Rmi;
 pub static ROC: Roc = Roc;
 pub static ROCR: Rocr = Rocr;
 pub static RMTA: Rmta = Rmta;
@@ -116,6 +120,7 @@ pub static TRIX: Trix = Trix;
 pub static TSI: Tsi = Tsi;
 pub static TRUNC: Trunc = Trunc;
 pub static TSF: Tsf = Tsf;
+pub static KST: Kst = Kst;
 pub static TYPPRICE: TypPrice = TypPrice;
 pub static ULTOSC: UltOsc = UltOsc;
 pub static VAR: Var = Var;
@@ -132,7 +137,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 116] {
+pub fn all() -> [&'static dyn Indicator; 120] {
     [
         &ABS,
         &ACOS,
@@ -157,6 +162,7 @@ pub fn all() -> [&'static dyn Indicator; 116] {
         &CEIL,
         &CMF,
         &CMO,
+        &COPP,
         &COS,
         &COSH,
         &CROSSANY,
@@ -203,12 +209,14 @@ pub fn all() -> [&'static dyn Indicator; 116] {
         &NATR,
         &NVI,
         &OBV,
+        &PFE,
         &PPO,
         &PBANDS,
         &PC,
         &PSAR,
         &PVI,
         &QSTICK,
+        &RMI,
         &ROC,
         &ROCR,
         &RMTA,
@@ -235,6 +243,7 @@ pub fn all() -> [&'static dyn Indicator; 116] {
         &TSI,
         &TRUNC,
         &TSF,
+        &KST,
         &TYPPRICE,
         &ULTOSC,
         &VAR,
@@ -278,6 +287,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "ceil" => Some(&CEIL),
         "cmf" => Some(&CMF),
         "cmo" => Some(&CMO),
+        "copp" => Some(&COPP),
         "cos" => Some(&COS),
         "cosh" => Some(&COSH),
         "crossany" => Some(&CROSSANY),
@@ -324,12 +334,14 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "natr" => Some(&NATR),
         "nvi" => Some(&NVI),
         "obv" => Some(&OBV),
+        "pfe" => Some(&PFE),
         "ppo" => Some(&PPO),
         "pbands" => Some(&PBANDS),
         "pc" => Some(&PC),
         "psar" => Some(&PSAR),
         "pvi" => Some(&PVI),
         "qstick" => Some(&QSTICK),
+        "rmi" => Some(&RMI),
         "roc" => Some(&ROC),
         "rocr" => Some(&ROCR),
         "rmta" => Some(&RMTA),
@@ -356,6 +368,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "tsi" => Some(&TSI),
         "trunc" => Some(&TRUNC),
         "tsf" => Some(&TSF),
+        "kst" => Some(&KST),
         "typprice" => Some(&TYPPRICE),
         "ultosc" => Some(&ULTOSC),
         "var" => Some(&VAR),
