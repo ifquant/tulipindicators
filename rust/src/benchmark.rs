@@ -11,9 +11,9 @@ use std::time::{Duration, Instant};
 const DEFAULT_SIZES: &[usize] = &[256, 4096, 65_536, 262_144];
 const DEFAULT_STREAM_CHUNK: usize = 1024;
 const DEFAULT_MIN_ITERATIONS: usize = 16;
-const DEFAULT_TARGET_MS: u64 = 1_000;
-const DEFAULT_CALIBRATION_MS: u64 = 50;
-const DEFAULT_REPEATS: usize = 5;
+const DEFAULT_TARGET_MS: u64 = 300;
+const DEFAULT_CALIBRATION_MS: u64 = 20;
+const DEFAULT_REPEATS: usize = 3;
 
 #[derive(Debug, Clone)]
 pub struct BenchmarkConfig {
