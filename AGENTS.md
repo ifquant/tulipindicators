@@ -32,6 +32,7 @@
 - 安装依赖：无包管理器；要求系统具备 `make`、`gcc`/`clang`、`ar`、`ranlib`、`tclsh`
 - 启动开发环境：无常驻开发服务器；通常直接编辑代码后运行构建或测试命令
 - Lint：无独立 lint 配置，不要虚构 lint 命令
+- Rust 静态检查：`cargo clippy --all-targets --all-features`
 - Type check：无独立 type check 配置
 - 单元测试：`make smoke`
 - 集成测试：`make smoke_amal`
@@ -86,6 +87,7 @@
 - 改动代码后，至少运行：`make smoke`
 - 改动单文件构建、生成脚本或公共头文件后，优先再运行：`make smoke_amal`
 - 改动 Rust 指标实现、流式路径或性能敏感逻辑时，优先再运行：`cargo run --release --bin indicator-bench`
+- 改动 Rust 代码结构、错误处理、公共接口或常量表达式时，优先再运行：`cargo clippy --all-targets --all-features`
 - 改动 benchmark contract、性能对比口径或回归阈值逻辑时，优先再运行：`cargo run --release --bin indicator-bench-compare`
 - 修复 bug 时，优先补一个能复现该 bug 的测试，或把现有 `tests/*.txt` 样例扩充到能覆盖该场景。
 - 改动公开接口、示例程序或生成逻辑时，更新相关文档与说明。

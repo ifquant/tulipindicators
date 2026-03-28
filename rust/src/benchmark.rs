@@ -104,7 +104,7 @@ pub struct BenchmarkResult {
 pub fn run_registry_benchmarks(
     config: &BenchmarkConfig,
 ) -> Result<Vec<BenchmarkResult>, IndicatorError> {
-    run_indicator_benchmarks(config, registry::all().into_iter())
+    run_indicator_benchmarks(config, registry::all())
 }
 
 pub fn run_named_benchmarks(
@@ -121,7 +121,7 @@ pub fn run_named_benchmarks(
         })?;
         indicators.push(indicator);
     }
-    run_indicator_benchmarks(config, indicators.into_iter())
+    run_indicator_benchmarks(config, indicators)
 }
 
 fn run_indicator_benchmarks<'a>(

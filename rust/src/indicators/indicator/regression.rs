@@ -298,7 +298,7 @@ impl Indicator for Fosc {
     }
 
     fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
-        Ok(parse_period(FOSC_METADATA.name, options)?)
+        parse_period(FOSC_METADATA.name, options)
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {

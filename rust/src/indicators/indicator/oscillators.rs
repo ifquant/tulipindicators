@@ -7,6 +7,9 @@ use crate::core::validation::{
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue, RingSum};
 use std::collections::VecDeque;
 
+#[allow(clippy::approx_constant)]
+const LEGACY_PI: Real = 3.1415926;
+
 const CCI_METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "cci",
     full_name: "Commodity Channel Index",
@@ -558,7 +561,7 @@ struct MswStream {
 impl MswStream {
     fn new(options: &[Real]) -> Result<Self, IndicatorError> {
         let period = parse_period(MSW_METADATA.name, options)?;
-        let tpi = 2.0 * 3.1415926;
+        let tpi = 2.0 * LEGACY_PI;
         let cos_weights = (0..period)
             .map(|index| (tpi * index as Real / period as Real).cos())
             .collect();
@@ -588,7 +591,7 @@ impl IndicatorStream for MswStream {
         let input = single_input(MSW_METADATA.name, inputs)?;
         let mut sine = Vec::with_capacity(input.len());
         let mut lead = Vec::with_capacity(input.len());
-        let pi = 3.1415926;
+        let pi = LEGACY_PI;
         let tpi = 2.0 * pi;
 
         for &sample in input {

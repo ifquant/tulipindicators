@@ -29,7 +29,7 @@ impl Indicator for Wilders {
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         single_input(METADATA.name, inputs)?;
         let mut stream = WildersStream::new(options)?;
-        Ok(stream.feed(inputs)?)
+        stream.feed(inputs)
     }
 
     fn create_stream(
