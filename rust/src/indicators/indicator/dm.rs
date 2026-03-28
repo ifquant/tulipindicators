@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{double_input, expect_option_count, parse_usize_option};
 use crate::indicators::shared::DirectionalMovementState;
@@ -28,18 +30,39 @@ impl Indicator for Dm {
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let (high, low) = double_input(METADATA.name, inputs)?;
-        let mut state = DirectionalMovementState::new(parse_period(options)?);
-        let mut plus = Vec::new();
-        let mut minus = Vec::new();
-
-        for (&high_value, &low_value) in high.iter().zip(low.iter()) {
-            if let Some((up, down)) = state.feed(high_value, low_value) {
-                plus.push(up);
-                minus.push(down);
-            }
+        let period = parse_period(options)?;
+        let output_len = high.len().saturating_sub(period.saturating_sub(1));
+        if output_len == 0 {
+            return Ok(vec![Vec::new(), Vec::new()]);
         }
 
+        let mut plus = vec![0.0; output_len];
+        let mut minus = vec![0.0; output_len];
+        let written = run_dm_batch(high, low, period, &mut plus, &mut minus);
+        debug_assert_eq!(written, output_len);
         Ok(vec![plus, minus])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = high.len().saturating_sub(period.saturating_sub(1));
+        validate_output_slices(&METADATA, outputs, 2)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        ensure_output_len(&METADATA, outputs[1].len(), output_len, 1)?;
+        let (plus_outputs, minus_outputs) = outputs.split_at_mut(1);
+        Ok(run_dm_batch(
+            high,
+            low,
+            period,
+            &mut plus_outputs[0][..output_len],
+            &mut minus_outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -47,6 +70,62 @@ impl Indicator for Dm {
         options: &[Real],
     ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
         Ok(Some(Box::new(DmStream::new(options)?)))
+    }
+}
+
+fn run_dm_batch(
+    high: &[Real],
+    low: &[Real],
+    period: usize,
+    plus: &mut [Real],
+    minus: &mut [Real],
+) -> usize {
+    if high.len() < period {
+        return 0;
+    }
+
+    let per = (period.saturating_sub(1)) as Real / period as Real;
+    let mut dmup = 0.0;
+    let mut dmdown = 0.0;
+
+    for index in 1..period {
+        let (dp, dm) =
+            directional_movement(high[index - 1], high[index], low[index - 1], low[index]);
+        dmup += dp;
+        dmdown += dm;
+    }
+
+    plus[0] = dmup;
+    minus[0] = dmdown;
+    let mut out_index = 1usize;
+
+    for index in period..high.len() {
+        let (dp, dm) =
+            directional_movement(high[index - 1], high[index], low[index - 1], low[index]);
+        dmup = dmup * per + dp;
+        dmdown = dmdown * per + dm;
+        plus[out_index] = dmup;
+        minus[out_index] = dmdown;
+        out_index += 1;
+    }
+
+    out_index
+}
+
+fn directional_movement(
+    previous_high: Real,
+    high: Real,
+    previous_low: Real,
+    low: Real,
+) -> (Real, Real) {
+    let up = high - previous_high;
+    let down = previous_low - low;
+    if up > down && up > 0.0 {
+        (up, 0.0)
+    } else if down > up && down > 0.0 {
+        (0.0, down)
+    } else {
+        (0.0, 0.0)
     }
 }
 

@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{double_input, expect_option_count, parse_usize_option};
 use crate::indicators::shared::{directional_ratio, DirectionalMovementState, WildersAverageState};
@@ -28,20 +30,35 @@ impl Indicator for Adx {
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let (high, low) = double_input(METADATA.name, inputs)?;
-        let mut dm_state = DirectionalMovementState::new(parse_period(options)?);
-        let mut adx_state = WildersAverageState::new(parse_period(options)?);
-        let mut output = Vec::new();
-
-        for (&high_value, &low_value) in high.iter().zip(low.iter()) {
-            if let Some((up, down)) = dm_state.feed(high_value, low_value) {
-                let dx = directional_ratio(up, down);
-                if let Some(adx) = adx_state.feed(dx) {
-                    output.push(adx);
-                }
-            }
+        let period = parse_period(options)?;
+        let output_len = high.len().saturating_sub((period - 1) * 2);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
         }
 
+        let mut output = vec![0.0; output_len];
+        let written = run_adx_batch(high, low, period, &mut output);
+        debug_assert_eq!(written, output_len);
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = high.len().saturating_sub((period - 1) * 2);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_adx_batch(
+            high,
+            low,
+            period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -49,6 +66,66 @@ impl Indicator for Adx {
         options: &[Real],
     ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
         Ok(Some(Box::new(AdxStream::new(options)?)))
+    }
+}
+
+fn run_adx_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if high.len() <= (period - 1) * 2 {
+        return 0;
+    }
+
+    let per = (period - 1) as Real / period as Real;
+    let invper = 1.0 / period as Real;
+    let mut dmup = 0.0;
+    let mut dmdown = 0.0;
+
+    for index in 1..period {
+        let (dp, dm) =
+            directional_movement(high[index - 1], high[index], low[index - 1], low[index]);
+        dmup += dp;
+        dmdown += dm;
+    }
+
+    let mut adx = directional_ratio(dmup, dmdown);
+    let mut out_index = 0usize;
+
+    for index in period..high.len() {
+        let (dp, dm) =
+            directional_movement(high[index - 1], high[index], low[index - 1], low[index]);
+        dmup = dmup * per + dp;
+        dmdown = dmdown * per + dm;
+        let dx = directional_ratio(dmup, dmdown);
+
+        if index - period < period - 2 {
+            adx += dx;
+        } else if index - period == period - 2 {
+            adx += dx;
+            output[out_index] = adx * invper;
+            out_index += 1;
+        } else {
+            adx = adx * per + dx;
+            output[out_index] = adx * invper;
+            out_index += 1;
+        }
+    }
+
+    out_index
+}
+
+fn directional_movement(
+    previous_high: Real,
+    high: Real,
+    previous_low: Real,
+    low: Real,
+) -> (Real, Real) {
+    let up = high - previous_high;
+    let down = previous_low - low;
+    if up > down && up > 0.0 {
+        (up, 0.0)
+    } else if down > up && down > 0.0 {
+        (0.0, down)
+    } else {
+        (0.0, 0.0)
     }
 }
 
