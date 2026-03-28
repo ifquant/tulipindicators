@@ -40,6 +40,23 @@ impl IndicatorStream for DoubleOverlayStream {
         self.progress += first.len();
         Ok(vec![output])
     }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (first, second) = double_input(self.metadata.name, inputs)?;
+        validate_output_slices(self.metadata, outputs, 1)?;
+        ensure_output_len(self.metadata, outputs[0].len(), first.len(), 0)?;
+
+        for index in 0..first.len() {
+            outputs[0][index] = (self.op)(first[index], second[index]);
+        }
+
+        self.progress += first.len();
+        Ok(first.len())
+    }
 }
 
 struct TripleOverlayStream {
@@ -77,6 +94,23 @@ impl IndicatorStream for TripleOverlayStream {
             .collect();
         self.progress += first.len();
         Ok(vec![output])
+    }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (first, second, third) = triple_input(self.metadata.name, inputs)?;
+        validate_output_slices(self.metadata, outputs, 1)?;
+        ensure_output_len(self.metadata, outputs[0].len(), first.len(), 0)?;
+
+        for index in 0..first.len() {
+            outputs[0][index] = (self.op)(first[index], second[index], third[index]);
+        }
+
+        self.progress += first.len();
+        Ok(first.len())
     }
 }
 
@@ -117,47 +151,23 @@ impl IndicatorStream for QuadOverlayStream {
         self.progress += first.len();
         Ok(vec![output])
     }
-}
 
-fn run_triple_overlay(
-    metadata: &'static IndicatorMetadata,
-    inputs: &[&[Real]],
-    options: &[Real],
-    op: fn(Real, Real, Real) -> Real,
-) -> Result<Vec<Vec<Real>>, IndicatorError> {
-    expect_option_count(metadata.name, options, 0)?;
-    let (first, second, third) = triple_input(metadata.name, inputs)?;
-    let output = first
-        .iter()
-        .zip(second.iter())
-        .zip(third.iter())
-        .map(|((&a, &b), &c)| op(a, b, c))
-        .collect();
-    Ok(vec![output])
-}
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (first, second, third, fourth) = quadruple_input(self.metadata.name, inputs)?;
+        validate_output_slices(self.metadata, outputs, 1)?;
+        ensure_output_len(self.metadata, outputs[0].len(), first.len(), 0)?;
 
-fn run_triple_overlay_in_place(
-    metadata: &'static IndicatorMetadata,
-    inputs: &[&[Real]],
-    options: &[Real],
-    outputs: &mut [&mut [Real]],
-    op: fn(Real, Real, Real) -> Real,
-) -> Result<usize, IndicatorError> {
-    expect_option_count(metadata.name, options, 0)?;
-    let (first, second, third) = triple_input(metadata.name, inputs)?;
-    validate_output_slices(metadata, outputs, 1)?;
-    ensure_output_len(metadata, outputs[0].len(), first.len(), 0)?;
+        for index in 0..first.len() {
+            outputs[0][index] = (self.op)(first[index], second[index], third[index], fourth[index]);
+        }
 
-    for (((dst, &a), &b), &c) in outputs[0][..first.len()]
-        .iter_mut()
-        .zip(first.iter())
-        .zip(second.iter())
-        .zip(third.iter())
-    {
-        *dst = op(a, b, c);
+        self.progress += first.len();
+        Ok(first.len())
     }
-
-    Ok(first.len())
 }
 
 fn avgprice_op(open: Real, high: Real, low: Real, close: Real) -> Real {
@@ -353,7 +363,12 @@ impl Indicator for TypPrice {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        run_triple_overlay(&TYPPRICE_METADATA, inputs, options, typprice_op)
+        expect_option_count(TYPPRICE_METADATA.name, options, 0)?;
+        let (high, low, close) = triple_input(TYPPRICE_METADATA.name, inputs)?;
+        let mut output = vec![0.0; high.len()];
+        let produced = run_typprice_batch(high, low, close, &mut output);
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
     }
 
     fn run_in_place(
@@ -362,7 +377,16 @@ impl Indicator for TypPrice {
         options: &[Real],
         outputs: &mut [&mut [Real]],
     ) -> Result<usize, IndicatorError> {
-        run_triple_overlay_in_place(&TYPPRICE_METADATA, inputs, options, outputs, typprice_op)
+        expect_option_count(TYPPRICE_METADATA.name, options, 0)?;
+        let (high, low, close) = triple_input(TYPPRICE_METADATA.name, inputs)?;
+        validate_output_slices(&TYPPRICE_METADATA, outputs, 1)?;
+        ensure_output_len(&TYPPRICE_METADATA, outputs[0].len(), high.len(), 0)?;
+        Ok(run_typprice_batch(
+            high,
+            low,
+            close,
+            &mut outputs[0][..high.len()],
+        ))
     }
 
     fn create_stream(
@@ -391,7 +415,12 @@ impl Indicator for WcPrice {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        run_triple_overlay(&WCPRICE_METADATA, inputs, options, wcprice_op)
+        expect_option_count(WCPRICE_METADATA.name, options, 0)?;
+        let (high, low, close) = triple_input(WCPRICE_METADATA.name, inputs)?;
+        let mut output = vec![0.0; high.len()];
+        let produced = run_wcprice_batch(high, low, close, &mut output);
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
     }
 
     fn run_in_place(
@@ -400,7 +429,16 @@ impl Indicator for WcPrice {
         options: &[Real],
         outputs: &mut [&mut [Real]],
     ) -> Result<usize, IndicatorError> {
-        run_triple_overlay_in_place(&WCPRICE_METADATA, inputs, options, outputs, wcprice_op)
+        expect_option_count(WCPRICE_METADATA.name, options, 0)?;
+        let (high, low, close) = triple_input(WCPRICE_METADATA.name, inputs)?;
+        validate_output_slices(&WCPRICE_METADATA, outputs, 1)?;
+        ensure_output_len(&WCPRICE_METADATA, outputs[0].len(), high.len(), 0)?;
+        Ok(run_wcprice_batch(
+            high,
+            low,
+            close,
+            &mut outputs[0][..high.len()],
+        ))
     }
 
     fn create_stream(
@@ -413,4 +451,18 @@ impl Indicator for WcPrice {
             wcprice_op,
         ))))
     }
+}
+
+fn run_typprice_batch(high: &[Real], low: &[Real], close: &[Real], output: &mut [Real]) -> usize {
+    for index in 0..high.len() {
+        output[index] = (high[index] + low[index] + close[index]) * (1.0 / 3.0);
+    }
+    output.len()
+}
+
+fn run_wcprice_batch(high: &[Real], low: &[Real], close: &[Real], output: &mut [Real]) -> usize {
+    for index in 0..high.len() {
+        output[index] = (high[index] + low[index] + close[index] + close[index]) * 0.25;
+    }
+    output.len()
 }
