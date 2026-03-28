@@ -214,25 +214,8 @@ impl Indicator for Crossover {
         let (left, right) = double_input(CROSSOVER_METADATA.name, inputs)?;
         let output_len = left.len().saturating_sub(1);
         let mut output = vec![0.0; output_len];
-
-        if output_len == 0 {
-            return Ok(vec![output]);
-        }
-
-        let mut prev_left = left[0];
-        let mut prev_right = right[0];
-        for index in 0..output_len {
-            let current_left = left[index + 1];
-            let current_right = right[index + 1];
-            output[index] = if current_left > current_right && prev_left <= prev_right {
-                1.0
-            } else {
-                0.0
-            };
-            prev_left = current_left;
-            prev_right = current_right;
-        }
-
+        let produced = run_crossover_batch(left, right, &mut output);
+        debug_assert_eq!(produced, output_len);
         Ok(vec![output])
     }
 
@@ -247,26 +230,11 @@ impl Indicator for Crossover {
         let output_len = left.len().saturating_sub(1);
         validate_output_slices(&CROSSOVER_METADATA, outputs, 1)?;
         ensure_output_len(&CROSSOVER_METADATA, outputs[0].len(), output_len, 0)?;
-
-        if output_len == 0 {
-            return Ok(0);
-        }
-
-        let mut prev_left = left[0];
-        let mut prev_right = right[0];
-        for index in 0..output_len {
-            let current_left = left[index + 1];
-            let current_right = right[index + 1];
-            outputs[0][index] = if current_left > current_right && prev_left <= prev_right {
-                1.0
-            } else {
-                0.0
-            };
-            prev_left = current_left;
-            prev_right = current_right;
-        }
-
-        Ok(output_len)
+        Ok(run_crossover_batch(
+            left,
+            right,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -279,6 +247,41 @@ impl Indicator for Crossover {
             progress: 0,
         })))
     }
+}
+
+fn run_crossover_batch(left: &[Real], right: &[Real], output: &mut [Real]) -> usize {
+    let output_len = left.len().saturating_sub(1);
+    if output_len == 0 {
+        return 0;
+    }
+
+    debug_assert_eq!(right.len(), left.len());
+    debug_assert!(output.len() >= output_len);
+
+    // Use the same adjacent-element walk as the C implementation to keep the
+    // hot loop simple and avoid heavier vectorized compare codegen.
+    unsafe {
+        let mut left_ptr = left.as_ptr();
+        let mut right_ptr = right.as_ptr();
+        let mut out_ptr = output.as_mut_ptr();
+
+        for _ in 0..output_len {
+            let prev_left = *left_ptr;
+            let prev_right = *right_ptr;
+            left_ptr = left_ptr.add(1);
+            right_ptr = right_ptr.add(1);
+            let current_left = *left_ptr;
+            let current_right = *right_ptr;
+            *out_ptr = if current_left > current_right && prev_left <= prev_right {
+                1.0
+            } else {
+                0.0
+            };
+            out_ptr = out_ptr.add(1);
+        }
+    }
+
+    output_len
 }
 
 struct CrossoverStream {
