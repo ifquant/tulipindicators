@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 
@@ -27,40 +29,24 @@ impl Indicator for Rsi {
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
         let period = parse_period(options)?;
-        let mut output = Vec::with_capacity(input.len().saturating_sub(period));
-
-        if input.len() <= period {
-            return Ok(vec![output]);
-        }
-
-        let per = 1.0 / period as Real;
-        let mut smooth_up = 0.0;
-        let mut smooth_down = 0.0;
-
-        for index in 1..=period {
-            let delta = input[index] - input[index - 1];
-            if delta > 0.0 {
-                smooth_up += delta;
-            } else {
-                smooth_down += -delta;
-            }
-        }
-
-        smooth_up /= period as Real;
-        smooth_down /= period as Real;
-        output.push(rsi_value(smooth_up, smooth_down));
-
-        for index in (period + 1)..input.len() {
-            let delta = input[index] - input[index - 1];
-            let upward = delta.max(0.0);
-            let downward = (-delta).max(0.0);
-
-            smooth_up = (upward - smooth_up) * per + smooth_up;
-            smooth_down = (downward - smooth_down) * per + smooth_down;
-            output.push(rsi_value(smooth_up, smooth_down));
-        }
-
+        let mut output = vec![0.0; input.len().saturating_sub(period)];
+        let produced = run_rsi_batch(input, period, &mut output);
+        debug_assert_eq!(produced, output.len());
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = input.len().saturating_sub(period);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_rsi_batch(input, period, &mut outputs[0][..output_len]))
     }
 
     fn create_stream(
@@ -140,6 +126,56 @@ impl IndicatorStream for RsiStream {
 
         Ok(vec![output])
     }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), input.len().saturating_sub(1), 0)?;
+
+        let mut out_index = 0usize;
+        let per = 1.0 / self.period as Real;
+
+        for &sample in input {
+            match self.last_input {
+                None => {
+                    self.last_input = Some(sample);
+                    self.progress += 1;
+                    continue;
+                }
+                Some(previous) => {
+                    let delta = sample - previous;
+                    let upward = delta.max(0.0);
+                    let downward = (-delta).max(0.0);
+
+                    if self.progress <= self.period {
+                        self.smooth_up += upward;
+                        self.smooth_down += downward;
+
+                        if self.progress == self.period {
+                            self.smooth_up /= self.period as Real;
+                            self.smooth_down /= self.period as Real;
+                            outputs[0][out_index] = rsi_value(self.smooth_up, self.smooth_down);
+                            out_index += 1;
+                        }
+                    } else {
+                        self.smooth_up = (upward - self.smooth_up) * per + self.smooth_up;
+                        self.smooth_down = (downward - self.smooth_down) * per + self.smooth_down;
+                        outputs[0][out_index] = rsi_value(self.smooth_up, self.smooth_down);
+                        out_index += 1;
+                    }
+
+                    self.last_input = Some(sample);
+                    self.progress += 1;
+                }
+            }
+        }
+
+        Ok(out_index)
+    }
 }
 
 fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {
@@ -154,4 +190,41 @@ fn rsi_value(smooth_up: Real, smooth_down: Real) -> Real {
     } else {
         100.0 * (smooth_up / total)
     }
+}
+
+fn run_rsi_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() <= period {
+        return 0;
+    }
+
+    let per = 1.0 / period as Real;
+    let mut smooth_up = 0.0;
+    let mut smooth_down = 0.0;
+
+    for index in 1..=period {
+        let delta = input[index] - input[index - 1];
+        if delta > 0.0 {
+            smooth_up += delta;
+        } else {
+            smooth_down += -delta;
+        }
+    }
+
+    smooth_up /= period as Real;
+    smooth_down /= period as Real;
+    output[0] = rsi_value(smooth_up, smooth_down);
+
+    let mut out_index = 1usize;
+    for index in (period + 1)..input.len() {
+        let delta = input[index] - input[index - 1];
+        let upward = delta.max(0.0);
+        let downward = (-delta).max(0.0);
+
+        smooth_up = (upward - smooth_up) * per + smooth_up;
+        smooth_down = (downward - smooth_down) * per + smooth_down;
+        output[out_index] = rsi_value(smooth_up, smooth_down);
+        out_index += 1;
+    }
+
+    out_index
 }
