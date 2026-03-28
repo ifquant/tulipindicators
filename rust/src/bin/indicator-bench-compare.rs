@@ -21,6 +21,8 @@ struct ExternalBenchmarkRow {
     sample_min_ms: f64,
     total_ms: f64,
     sample_max_ms: f64,
+    sample_stddev_ms: f64,
+    sample_cv: f64,
     ns_per_input: f64,
 }
 
@@ -38,9 +40,13 @@ struct CompareRow {
     c_sample_min_ms: f64,
     c_sample_median_ms: f64,
     c_sample_max_ms: f64,
+    c_sample_stddev_ms: f64,
+    c_sample_cv: f64,
     rust_sample_min_ms: f64,
     rust_sample_median_ms: f64,
     rust_sample_max_ms: f64,
+    rust_sample_stddev_ms: f64,
+    rust_sample_cv: f64,
     ratio: f64,
     status: &'static str,
 }
@@ -176,7 +182,7 @@ fn parse_external_tsv(raw: &str) -> Result<Vec<ExternalBenchmarkRow>, String> {
             continue;
         }
         let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() != 11 {
+        if parts.len() != 13 {
             return Err(format!("invalid benchmark TSV row: {line}"));
         }
         rows.push(ExternalBenchmarkRow {
@@ -206,7 +212,13 @@ fn parse_external_tsv(raw: &str) -> Result<Vec<ExternalBenchmarkRow>, String> {
             sample_max_ms: parts[9]
                 .parse()
                 .map_err(|_| format!("invalid sample_max_ms in row: {line}"))?,
-            ns_per_input: parts[10]
+            sample_stddev_ms: parts[10]
+                .parse()
+                .map_err(|_| format!("invalid sample_stddev_ms in row: {line}"))?,
+            sample_cv: parts[11]
+                .parse()
+                .map_err(|_| format!("invalid sample_cv in row: {line}"))?,
+            ns_per_input: parts[12]
                 .parse()
                 .map_err(|_| format!("invalid ns_per_input in row: {line}"))?,
         });
@@ -269,9 +281,13 @@ fn compare_rows(
             c_sample_min_ms: c_row.sample_min_ms,
             c_sample_median_ms: c_row.total_ms,
             c_sample_max_ms: c_row.sample_max_ms,
+            c_sample_stddev_ms: c_row.sample_stddev_ms,
+            c_sample_cv: c_row.sample_cv,
             rust_sample_min_ms: rust_row.sample_min.as_secs_f64() * 1000.0,
             rust_sample_median_ms: rust_row.elapsed.as_secs_f64() * 1000.0,
             rust_sample_max_ms: rust_row.sample_max.as_secs_f64() * 1000.0,
+            rust_sample_stddev_ms: rust_row.sample_stddev_ms,
+            rust_sample_cv: rust_row.sample_cv,
             ratio,
             status,
         });
@@ -282,11 +298,11 @@ fn compare_rows(
 
 fn render_external_tsv(rows: &[ExternalBenchmarkRow]) -> String {
     let mut out = String::from(
-        "indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tns_per_input\n",
+        "indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tsample_stddev_ms\tsample_cv\tns_per_input\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{}\t{}\t{}\t{}\t{:.3}\t{}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.2}\n",
+            "{}\t{}\t{}\t{}\t{:.3}\t{}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.2}\n",
             row.indicator,
             row.mode,
             row.input_len,
@@ -297,6 +313,8 @@ fn render_external_tsv(rows: &[ExternalBenchmarkRow]) -> String {
             row.sample_min_ms,
             row.total_ms,
             row.sample_max_ms,
+            row.sample_stddev_ms,
+            row.sample_cv,
             row.ns_per_input
         ));
     }
@@ -305,11 +323,11 @@ fn render_external_tsv(rows: &[ExternalBenchmarkRow]) -> String {
 
 fn render_compare_tsv(rows: &[CompareRow]) -> String {
     let mut out = String::from(
-        "indicator\tmode\tinput_len\tc_calibration_runs\trust_calibration_runs\tc_calibration_ms\trust_calibration_ms\tc_sample_min_ms\tc_sample_median_ms\tc_sample_max_ms\trust_sample_min_ms\trust_sample_median_ms\trust_sample_max_ms\tc_ns_per_input\trust_ns_per_input\tratio\tstatus\n",
+        "indicator\tmode\tinput_len\tc_calibration_runs\trust_calibration_runs\tc_calibration_ms\trust_calibration_ms\tc_sample_min_ms\tc_sample_median_ms\tc_sample_max_ms\tc_sample_stddev_ms\tc_sample_cv\trust_sample_min_ms\trust_sample_median_ms\trust_sample_max_ms\trust_sample_stddev_ms\trust_sample_cv\tc_ns_per_input\trust_ns_per_input\tratio\tstatus\n",
     );
     for row in rows {
         out.push_str(&format!(
-            "{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.2}\t{:.2}\t{:.3}\t{}\n",
+            "{}\t{}\t{}\t{}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.2}\t{:.2}\t{:.3}\t{}\n",
             row.indicator,
             row.mode,
             row.input_len,
@@ -320,9 +338,13 @@ fn render_compare_tsv(rows: &[CompareRow]) -> String {
             row.c_sample_min_ms,
             row.c_sample_median_ms,
             row.c_sample_max_ms,
+            row.c_sample_stddev_ms,
+            row.c_sample_cv,
             row.rust_sample_min_ms,
             row.rust_sample_median_ms,
             row.rust_sample_max_ms,
+            row.rust_sample_stddev_ms,
+            row.rust_sample_cv,
             row.c_ns_per_input,
             row.rust_ns_per_input,
             row.ratio,
@@ -340,12 +362,12 @@ fn render_compare_markdown(rows: &[CompareRow], regression_warn: f64) -> String 
         regression_warn
     ));
     out.push_str(
-        "| indicator | mode | input_len | c ns/input | rust ns/input | ratio | c sample ms (min/med/max) | rust sample ms (min/med/max) | status |\n",
+        "| indicator | mode | input_len | c ns/input | rust ns/input | ratio | c sample ms (min/med/max/stddev/cv) | rust sample ms (min/med/max/stddev/cv) | status |\n",
     );
     out.push_str("| --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |\n");
     for row in rows {
         out.push_str(&format!(
-            "| {} | {} | {} | {:.2} | {:.2} | {:.3} | {:.3}/{:.3}/{:.3} | {:.3}/{:.3}/{:.3} | {} |\n",
+            "| {} | {} | {} | {:.2} | {:.2} | {:.3} | {:.3}/{:.3}/{:.3}/{:.3}/{:.3} | {:.3}/{:.3}/{:.3}/{:.3}/{:.3} | {} |\n",
             row.indicator,
             row.mode,
             row.input_len,
@@ -355,9 +377,13 @@ fn render_compare_markdown(rows: &[CompareRow], regression_warn: f64) -> String 
             row.c_sample_min_ms,
             row.c_sample_median_ms,
             row.c_sample_max_ms,
+            row.c_sample_stddev_ms,
+            row.c_sample_cv,
             row.rust_sample_min_ms,
             row.rust_sample_median_ms,
             row.rust_sample_max_ms,
+            row.rust_sample_stddev_ms,
+            row.rust_sample_cv,
             row.status
         ));
     }

@@ -34,6 +34,8 @@ typedef struct {
     double sample_min_ms;
     double total_ms;
     double sample_max_ms;
+    double sample_stddev_ms;
+    double sample_cv;
     double ns_per_input;
 } bench_result;
 
@@ -204,6 +206,25 @@ static double max_double(const double *samples, int count) {
         }
     }
     return value;
+}
+
+static double stddev_double(const double *samples, int count) {
+    double mean = 0.0;
+    double variance = 0.0;
+    int i;
+    if (count <= 1) {
+        return 0.0;
+    }
+    for (i = 0; i < count; ++i) {
+        mean += samples[i];
+    }
+    mean /= (double)count;
+    for (i = 0; i < count; ++i) {
+        const double delta = samples[i] - mean;
+        variance += delta * delta;
+    }
+    variance /= (double)count;
+    return sqrt(variance);
 }
 
 static TI_REAL default_period(int input_len) {
@@ -396,6 +417,8 @@ static int run_batch_benchmark(
         result->sample_min_ms = min_double(samples, config->repeats);
         result->total_ms = median_double(samples, config->repeats);
         result->sample_max_ms = max_double(samples, config->repeats);
+        result->sample_stddev_ms = stddev_double(samples, config->repeats);
+        result->sample_cv = result->total_ms > 0.0 ? result->sample_stddev_ms / result->total_ms : 0.0;
         free(samples);
     }
 
@@ -579,6 +602,8 @@ static int run_stream_benchmark(
         result->sample_min_ms = min_double(samples, config->repeats);
         result->total_ms = median_double(samples, config->repeats);
         result->sample_max_ms = max_double(samples, config->repeats);
+        result->sample_stddev_ms = stddev_double(samples, config->repeats);
+        result->sample_cv = result->total_ms > 0.0 ? result->sample_stddev_ms / result->total_ms : 0.0;
         free(samples);
     }
 
@@ -597,7 +622,7 @@ static int run_stream_benchmark(
 
 static void print_result(const bench_result *result) {
     printf(
-        "%s\t%s\t%d\t%d\t%.3f\t%d\t%d\t%.3f\t%.3f\t%.3f\t%.2f\n",
+        "%s\t%s\t%d\t%d\t%.3f\t%d\t%d\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.2f\n",
         result->indicator,
         result->mode,
         result->input_len,
@@ -608,6 +633,8 @@ static void print_result(const bench_result *result) {
         result->sample_min_ms,
         result->total_ms,
         result->sample_max_ms,
+        result->sample_stddev_ms,
+        result->sample_cv,
         result->ns_per_input
     );
 }
@@ -616,7 +643,7 @@ int main(void) {
     bench_config config;
     load_config(&config);
 
-    printf("indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tns_per_input\n");
+    printf("indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tsample_stddev_ms\tsample_cv\tns_per_input\n");
 
     {
         int size_index;

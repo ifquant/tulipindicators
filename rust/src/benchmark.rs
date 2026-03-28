@@ -124,6 +124,8 @@ pub struct BenchmarkResult {
     pub elapsed: Duration,
     pub sample_min: Duration,
     pub sample_max: Duration,
+    pub sample_stddev_ms: f64,
+    pub sample_cv: f64,
     pub ns_per_input: f64,
 }
 
@@ -195,13 +197,13 @@ pub fn write_report(
 pub fn render_markdown(results: &[BenchmarkResult]) -> String {
     let mut out = String::new();
     out.push_str("# Indicator Benchmarks\n\n");
-    out.push_str("| indicator | mode | input_len | calibration_runs | calibration_ms | iterations | outputs | sample_min_ms | sample_median_ms | sample_max_ms | ns/input |\n");
-    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
+    out.push_str("| indicator | mode | input_len | calibration_runs | calibration_ms | iterations | outputs | sample_min_ms | sample_median_ms | sample_max_ms | sample_stddev_ms | sample_cv | ns/input |\n");
+    out.push_str("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n");
 
     for result in results {
         let _ = writeln!(
             out,
-            "| {} | {} | {} | {} | {:.3} | {} | {} | {:.3} | {:.3} | {:.3} | {:.2} |",
+            "| {} | {} | {} | {} | {:.3} | {} | {} | {:.3} | {:.3} | {:.3} | {:.3} | {:.3} | {:.2} |",
             result.indicator,
             result.mode.as_str(),
             result.input_len,
@@ -212,6 +214,8 @@ pub fn render_markdown(results: &[BenchmarkResult]) -> String {
             result.sample_min.as_secs_f64() * 1000.0,
             result.elapsed.as_secs_f64() * 1000.0,
             result.sample_max.as_secs_f64() * 1000.0,
+            result.sample_stddev_ms,
+            result.sample_cv,
             result.ns_per_input,
         );
     }
@@ -221,13 +225,13 @@ pub fn render_markdown(results: &[BenchmarkResult]) -> String {
 
 pub fn render_tsv(results: &[BenchmarkResult]) -> String {
     let mut out = String::from(
-        "indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tns_per_input\n",
+        "indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tsample_stddev_ms\tsample_cv\tns_per_input\n",
     );
 
     for result in results {
         let _ = writeln!(
             out,
-            "{}\t{}\t{}\t{}\t{:.3}\t{}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.2}",
+            "{}\t{}\t{}\t{}\t{:.3}\t{}\t{}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.3}\t{:.2}",
             result.indicator,
             result.mode.as_str(),
             result.input_len,
@@ -238,6 +242,8 @@ pub fn render_tsv(results: &[BenchmarkResult]) -> String {
             result.sample_min.as_secs_f64() * 1000.0,
             result.elapsed.as_secs_f64() * 1000.0,
             result.sample_max.as_secs_f64() * 1000.0,
+            result.sample_stddev_ms,
+            result.sample_cv,
             result.ns_per_input,
         );
     }
@@ -329,6 +335,8 @@ fn run_batch_benchmark(
     let elapsed = median_duration(samples.clone());
     let sample_min = samples.iter().copied().min().unwrap_or(elapsed);
     let sample_max = samples.iter().copied().max().unwrap_or(elapsed);
+    let sample_stddev_ms = stddev_duration_ms(&samples);
+    let sample_cv = coefficient_of_variation(sample_stddev_ms, elapsed.as_secs_f64() * 1000.0);
 
     Ok(BenchmarkResult {
         indicator: metadata.name,
@@ -341,6 +349,8 @@ fn run_batch_benchmark(
         elapsed,
         sample_min,
         sample_max,
+        sample_stddev_ms,
+        sample_cv,
         ns_per_input: elapsed.as_secs_f64() * 1_000_000_000.0
             / (scenario.inputs[0].len() * iterations) as f64,
     })
@@ -399,6 +409,8 @@ fn run_stream_benchmark(
     let elapsed = median_duration(samples.clone());
     let sample_min = samples.iter().copied().min().unwrap_or(elapsed);
     let sample_max = samples.iter().copied().max().unwrap_or(elapsed);
+    let sample_stddev_ms = stddev_duration_ms(&samples);
+    let sample_cv = coefficient_of_variation(sample_stddev_ms, elapsed.as_secs_f64() * 1000.0);
 
     Ok(BenchmarkResult {
         indicator: scenario.indicator.metadata().name,
@@ -411,6 +423,8 @@ fn run_stream_benchmark(
         elapsed,
         sample_min,
         sample_max,
+        sample_stddev_ms,
+        sample_cv,
         ns_per_input: elapsed.as_secs_f64() * 1_000_000_000.0
             / (scenario.inputs[0].len() * iterations) as f64,
     })
@@ -479,6 +493,35 @@ where
 fn median_duration(mut samples: Vec<Duration>) -> Duration {
     samples.sort_unstable();
     samples[samples.len() / 2]
+}
+
+fn stddev_duration_ms(samples: &[Duration]) -> f64 {
+    if samples.len() <= 1 {
+        return 0.0;
+    }
+    let mean = samples
+        .iter()
+        .map(|sample| sample.as_secs_f64() * 1000.0)
+        .sum::<f64>()
+        / samples.len() as f64;
+    let variance = samples
+        .iter()
+        .map(|sample| {
+            let value = sample.as_secs_f64() * 1000.0;
+            let delta = value - mean;
+            delta * delta
+        })
+        .sum::<f64>()
+        / samples.len() as f64;
+    variance.sqrt()
+}
+
+fn coefficient_of_variation(stddev_ms: f64, median_ms: f64) -> f64 {
+    if median_ms == 0.0 {
+        0.0
+    } else {
+        stddev_ms / median_ms
+    }
 }
 
 fn build_options(option_names: &[&str], input_len: usize) -> Vec<Real> {
