@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 
@@ -44,6 +46,33 @@ impl Indicator for Ema {
         }
 
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options, METADATA.name)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
+
+        if input.is_empty() {
+            return Ok(0);
+        }
+
+        let multiplier = 2.0 / (period as Real + 1.0);
+        let mut value = input[0];
+        outputs[0][0] = value;
+
+        for (dst, &sample) in outputs[0][1..input.len()].iter_mut().zip(input[1..].iter()) {
+            value = (sample - value) * multiplier + value;
+            *dst = value;
+        }
+
+        Ok(input.len())
     }
 
     fn create_stream(
@@ -95,6 +124,30 @@ impl IndicatorStream for EmaStream {
         }
 
         Ok(vec![output])
+    }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
+
+        let mut out_index = 0usize;
+        for &sample in input {
+            let value = match self.last {
+                Some(last) => (sample - last) * self.multiplier + last,
+                None => sample,
+            };
+            self.last = Some(value);
+            self.progress += 1;
+            outputs[0][out_index] = value;
+            out_index += 1;
+        }
+
+        Ok(out_index)
     }
 }
 

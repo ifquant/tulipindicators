@@ -31,29 +31,37 @@ impl Indicator for Atr {
         let (high, low, close) = triple_input(METADATA.name, inputs)?;
         let period = parse_period(options)?;
         let lookback = period - 1;
-        let mut output = Vec::with_capacity(high.len().saturating_sub(lookback));
+        let mut output = vec![0.0; high.len().saturating_sub(lookback)];
 
         if high.len() <= lookback {
+            output.clear();
             return Ok(vec![output]);
         }
 
-        let per = 1.0 / period as Real;
-        let mut sum = high[0] - low[0];
-
-        for index in 1..period {
-            sum += true_range(high[index], low[index], close[index - 1]);
-        }
-
-        let mut value = sum / period as Real;
-        output.push(value);
-
-        for index in period..high.len() {
-            let tr = true_range(high[index], low[index], close[index - 1]);
-            value = (tr - value) * per + value;
-            output.push(value);
-        }
+        let produced = run_atr_batch(high, low, close, period, &mut output);
+        debug_assert_eq!(produced, output.len());
 
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low, close) = triple_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = high.len().saturating_sub(period - 1);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_atr_batch(
+            high,
+            low,
+            close,
+            period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -187,4 +195,35 @@ fn true_range(high: Real, low: Real, previous_close: Real) -> Real {
         value = ycl;
     }
     value
+}
+
+fn run_atr_batch(
+    high: &[Real],
+    low: &[Real],
+    close: &[Real],
+    period: usize,
+    output: &mut [Real],
+) -> usize {
+    if high.len() < period {
+        return 0;
+    }
+
+    let per = 1.0 / period as Real;
+    let mut sum = high[0] - low[0];
+    for index in 1..period {
+        sum += true_range(high[index], low[index], close[index - 1]);
+    }
+
+    let mut value = sum / period as Real;
+    output[0] = value;
+    let mut out_index = 1usize;
+
+    for index in period..high.len() {
+        let tr = true_range(high[index], low[index], close[index - 1]);
+        value = (tr - value) * per + value;
+        output[out_index] = value;
+        out_index += 1;
+    }
+
+    out_index
 }

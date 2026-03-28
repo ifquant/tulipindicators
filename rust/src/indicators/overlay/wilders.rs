@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 use crate::indicators::shared::WildersAverageState;
@@ -27,9 +29,31 @@ impl Indicator for Wilders {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        single_input(METADATA.name, inputs)?;
-        let mut stream = WildersStream::new(options)?;
-        stream.feed(inputs)
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        let mut output = vec![0.0; output_len];
+        let produced = run_wilders_batch(input, period, &mut output);
+        debug_assert_eq!(produced, output.len());
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_wilders_batch(
+            input,
+            period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -76,9 +100,54 @@ impl IndicatorStream for WildersStream {
 
         Ok(vec![output])
     }
+
+    fn feed_in_place(
+        &mut self,
+        inputs: &[&[Real]],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
+
+        let mut out_index = 0usize;
+        for &sample in input {
+            if let Some(value) = self.smoother.feed(sample) {
+                outputs[0][out_index] = value;
+                out_index += 1;
+            }
+            self.progress += 1;
+        }
+
+        Ok(out_index)
+    }
 }
 
 fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {
     expect_option_count(METADATA.name, options, 1)?;
     parse_usize_option(METADATA.name, options, 0, "period", 1)
+}
+
+fn run_wilders_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() < period {
+        return 0;
+    }
+
+    let per = 1.0 / period as Real;
+    let mut sum = 0.0;
+    for &sample in &input[..period] {
+        sum += sample;
+    }
+
+    let mut value = sum / period as Real;
+    output[0] = value;
+    let mut out_index = 1usize;
+
+    for &sample in &input[period..] {
+        value = (sample - value) * per + value;
+        output[out_index] = value;
+        out_index += 1;
+    }
+
+    out_index
 }
