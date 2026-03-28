@@ -3,7 +3,11 @@ use std::path::Path;
 
 use tulipindicators::{all, find, Real};
 
-const TEST_FILES: &[&str] = &["c/tests/atoz.txt", "c/tests/untest.txt", "c/tests/extra.txt"];
+const TEST_FILES: &[&str] = &[
+    "c/tests/atoz.txt",
+    "c/tests/untest.txt",
+    "c/tests/extra.txt",
+];
 const APPROX_TOLERANCE: Real = 1e-3;
 const STREAM_TOLERANCE: Real = 1e-10;
 const STREAM_STEPS: &[usize] = &[1, 2, 3, 5, 7, 64];
@@ -105,7 +109,20 @@ fn default_options(indicator: &str) -> Vec<Real> {
         "bbands" => vec![5.0, 2.0],
         "macd" => vec![12.0, 26.0, 9.0],
         "vidya" => vec![2.0, 5.0, 0.2],
-        _ => vec![5.0],
+        _ => {
+            let option_count = find(indicator)
+                .expect("indicator should exist when choosing default stream options")
+                .metadata()
+                .option_names
+                .len();
+            match option_count {
+                0 => vec![],
+                1 => vec![5.0],
+                2 => vec![5.0, 10.0],
+                3 => vec![5.0, 10.0, 3.0],
+                _ => panic!("missing default options for {indicator}"),
+            }
+        }
     }
 }
 

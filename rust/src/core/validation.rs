@@ -81,6 +81,27 @@ pub fn triple_input<'a>(
     Ok((inputs[0], inputs[1], inputs[2]))
 }
 
+pub fn quadruple_input<'a>(
+    indicator: &'static str,
+    inputs: &'a [&'a [Real]],
+) -> Result<(&'a [Real], &'a [Real], &'a [Real], &'a [Real]), IndicatorError> {
+    expect_input_count(indicator, inputs, 4)?;
+    let expected = inputs[0].len();
+
+    for (input_index, series) in inputs.iter().enumerate().skip(1) {
+        if series.len() != expected {
+            return Err(IndicatorError::InputLengthMismatch {
+                indicator,
+                expected,
+                actual: series.len(),
+                input_index,
+            });
+        }
+    }
+
+    Ok((inputs[0], inputs[1], inputs[2], inputs[3]))
+}
+
 pub fn parse_usize_option(
     indicator: &'static str,
     options: &[Real],

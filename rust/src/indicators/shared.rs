@@ -260,6 +260,7 @@ impl DirectionalIndexState {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum ExtremaKind {
     Max,
     Min,
@@ -346,6 +347,10 @@ impl RingSum {
         if self.index == self.capacity {
             self.index = 0;
         }
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.len == self.capacity
     }
 }
 
