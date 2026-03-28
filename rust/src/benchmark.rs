@@ -391,8 +391,10 @@ fn build_inputs(input_names: &[&str], input_len: usize) -> Vec<Vec<Real>> {
 
     input_names
         .iter()
-        .map(|name| match *name {
-            "real" | "close" => close.clone(),
+        .enumerate()
+        .map(|(input_index, name)| match *name {
+            "real" => build_real_series(input_index, &close),
+            "close" => close.clone(),
             "open" => close
                 .iter()
                 .enumerate()
@@ -412,6 +414,27 @@ fn build_inputs(input_names: &[&str], input_len: usize) -> Vec<Vec<Real>> {
             _ => close.clone(),
         })
         .collect()
+}
+
+fn build_real_series(input_index: usize, close: &[Real]) -> Vec<Real> {
+    match input_index % 4 {
+        0 => close.to_vec(),
+        1 => close
+            .iter()
+            .enumerate()
+            .map(|(index, close_value)| close_value - ((index % 3) as Real - 1.0) * 0.13)
+            .collect(),
+        2 => close
+            .iter()
+            .enumerate()
+            .map(|(index, close_value)| close_value + 0.35 + ((index % 5) as Real * 0.03))
+            .collect(),
+        _ => close
+            .iter()
+            .enumerate()
+            .map(|(index, close_value)| close_value - 0.35 - ((index % 5) as Real * 0.03))
+            .collect(),
+    }
 }
 
 fn build_close_series(input_len: usize) -> Vec<Real> {

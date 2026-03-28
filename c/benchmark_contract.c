@@ -247,7 +247,14 @@ static void build_inputs(
     int i;
     for (i = 0; i < info->inputs; ++i) {
         const char *name = info->input_names[i];
-        if (strcmp(name, "real") == 0 || strcmp(name, "close") == 0) {
+        if (strcmp(name, "real") == 0) {
+            switch (i % 4) {
+                case 0: inputs[i] = close; break;
+                case 1: inputs[i] = open; break;
+                case 2: inputs[i] = high; break;
+                default: inputs[i] = low; break;
+            }
+        } else if (strcmp(name, "close") == 0) {
             inputs[i] = close;
         } else if (strcmp(name, "open") == 0) {
             inputs[i] = open;

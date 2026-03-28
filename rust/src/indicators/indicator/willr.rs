@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue};
@@ -30,32 +32,37 @@ impl Indicator for WillR {
         let (high, low, close) = triple_input(METADATA.name, inputs)?;
         let period = parse_period(options)?;
         let lookback = period - 1;
-        let mut output = Vec::with_capacity(high.len().saturating_sub(lookback));
+        let mut output = vec![0.0; high.len().saturating_sub(lookback)];
 
         if high.len() <= lookback {
+            output.clear();
             return Ok(vec![output]);
         }
 
-        let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
-        let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
-
-        for index in 0..high.len() {
-            max_queue.push(index, high[index]);
-            min_queue.push(index, low[index]);
-
-            if index + 1 >= period {
-                let window_start = index + 1 - period;
-                max_queue.evict_before(window_start);
-                min_queue.evict_before(window_start);
-                output.push(willr_value(
-                    max_queue.front_value(),
-                    min_queue.front_value(),
-                    close[index],
-                ));
-            }
-        }
+        let produced = run_willr_batch(high, low, close, period, &mut output);
+        debug_assert_eq!(produced, output.len());
 
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low, close) = triple_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = high.len().saturating_sub(period - 1);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_willr_batch(
+            high,
+            low,
+            close,
+            period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -132,4 +139,66 @@ fn willr_value(max: Real, min: Real, close: Real) -> Real {
     } else {
         -100.0 * ((max - close) / highlow)
     }
+}
+
+fn run_willr_batch(
+    high: &[Real],
+    low: &[Real],
+    close: &[Real],
+    period: usize,
+    output: &mut [Real],
+) -> usize {
+    let lookback = period - 1;
+    if high.len() <= lookback {
+        return 0;
+    }
+
+    let mut maxi = -1isize;
+    let mut mini = -1isize;
+    let mut max = high[0];
+    let mut min = low[0];
+    let mut out_index = 0usize;
+
+    for (trail, index) in (lookback..high.len()).enumerate() {
+        let mut bar = high[index];
+        if maxi < trail as isize {
+            maxi = trail as isize;
+            max = high[maxi as usize];
+            let mut scan = trail + 1;
+            while scan <= index {
+                bar = high[scan];
+                if bar >= max {
+                    max = bar;
+                    maxi = scan as isize;
+                }
+                scan += 1;
+            }
+        } else if bar >= max {
+            maxi = index as isize;
+            max = bar;
+        }
+
+        bar = low[index];
+        if mini < trail as isize {
+            mini = trail as isize;
+            min = low[mini as usize];
+            let mut scan = trail + 1;
+            while scan <= index {
+                bar = low[scan];
+                if bar <= min {
+                    min = bar;
+                    mini = scan as isize;
+                }
+                scan += 1;
+            }
+        } else if bar <= min {
+            mini = index as isize;
+            min = bar;
+        }
+
+        output[out_index] = willr_value(max, min, close[index]);
+        out_index += 1;
+    }
+
+    out_index
 }
