@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue, RsiState};
@@ -27,8 +29,77 @@ impl Indicator for StochRsi {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = StochRsiStream::new(options)?;
-        stream.feed(inputs)
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let mut output = Vec::with_capacity(input.len().saturating_sub(period * 2 - 1));
+        let mut rsi_progress = 0usize;
+        let mut rsi_state = RsiState::new(period);
+        let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
+        let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+
+        for &sample in input {
+            if let Some(rsi) = rsi_state.feed(sample) {
+                max_queue.push(rsi_progress, rsi);
+                min_queue.push(rsi_progress, rsi);
+
+                let window_start = rsi_progress.saturating_sub(period - 1);
+                max_queue.evict_before(window_start);
+                min_queue.evict_before(window_start);
+
+                if rsi_progress + 1 >= period {
+                    let max = max_queue.front_value();
+                    let min = min_queue.front_value();
+                    let diff = max - min;
+                    output.push(if diff == 0.0 { 0.0 } else { (rsi - min) / diff });
+                }
+
+                rsi_progress += 1;
+            }
+        }
+
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let output_len = input.len().saturating_sub(period * 2 - 1);
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
+
+        let mut produced = 0usize;
+        let mut rsi_progress = 0usize;
+        let mut rsi_state = RsiState::new(period);
+        let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
+        let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+
+        for &sample in input {
+            if let Some(rsi) = rsi_state.feed(sample) {
+                max_queue.push(rsi_progress, rsi);
+                min_queue.push(rsi_progress, rsi);
+
+                let window_start = rsi_progress.saturating_sub(period - 1);
+                max_queue.evict_before(window_start);
+                min_queue.evict_before(window_start);
+
+                if rsi_progress + 1 >= period {
+                    let max = max_queue.front_value();
+                    let min = min_queue.front_value();
+                    let diff = max - min;
+                    outputs[0][produced] = if diff == 0.0 { 0.0 } else { (rsi - min) / diff };
+                    produced += 1;
+                }
+
+                rsi_progress += 1;
+            }
+        }
+
+        Ok(produced)
     }
 
     fn create_stream(

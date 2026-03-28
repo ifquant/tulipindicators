@@ -131,6 +131,27 @@ impl Indicator for CrossAny {
         Ok(vec![output])
     }
 
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(CROSSANY_METADATA.name, options, 0)?;
+        let (left, right) = double_input(CROSSANY_METADATA.name, inputs)?;
+        let output_len = left.len().saturating_sub(1);
+        validate_output_slices(&CROSSANY_METADATA, outputs, 1)?;
+        ensure_output_len(&CROSSANY_METADATA, outputs[0].len(), output_len, 0)?;
+
+        for (dst, index) in outputs[0][..output_len].iter_mut().zip(1..left.len()) {
+            let crossed = (left[index] > right[index] && left[index - 1] <= right[index - 1])
+                || (left[index] < right[index] && left[index - 1] >= right[index - 1]);
+            *dst = bool_to_real(crossed);
+        }
+
+        Ok(output_len)
+    }
+
     fn create_stream(
         &self,
         options: &[Real],
@@ -200,6 +221,25 @@ impl Indicator for Crossover {
         }
 
         Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(CROSSOVER_METADATA.name, options, 0)?;
+        let (left, right) = double_input(CROSSOVER_METADATA.name, inputs)?;
+        let output_len = left.len().saturating_sub(1);
+        validate_output_slices(&CROSSOVER_METADATA, outputs, 1)?;
+        ensure_output_len(&CROSSOVER_METADATA, outputs[0].len(), output_len, 0)?;
+
+        for (dst, index) in outputs[0][..output_len].iter_mut().zip(1..left.len()) {
+            *dst = bool_to_real(left[index] > right[index] && left[index - 1] <= right[index - 1]);
+        }
+
+        Ok(output_len)
     }
 
     fn create_stream(

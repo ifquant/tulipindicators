@@ -287,8 +287,51 @@ impl Indicator for Nvi {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = NviStream::new(options)?;
-        stream.feed(inputs)
+        expect_option_count(NVI_METADATA.name, options, 0)?;
+        let (close, volume) = double_input(NVI_METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(close.len());
+        let mut nvi = 1000.0;
+
+        if close.is_empty() {
+            return Ok(vec![output]);
+        }
+
+        output.push(nvi);
+        for index in 1..close.len() {
+            if volume[index] < volume[index - 1] {
+                nvi += ((close[index] - close[index - 1]) / close[index - 1]) * nvi;
+            }
+            output.push(nvi);
+        }
+
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(NVI_METADATA.name, options, 0)?;
+        let (close, volume) = double_input(NVI_METADATA.name, inputs)?;
+        validate_output_slices(&NVI_METADATA, outputs, 1)?;
+        ensure_output_len(&NVI_METADATA, outputs[0].len(), close.len(), 0)?;
+
+        if close.is_empty() {
+            return Ok(0);
+        }
+
+        let mut nvi = 1000.0;
+        outputs[0][0] = nvi;
+        for index in 1..close.len() {
+            if volume[index] < volume[index - 1] {
+                nvi += ((close[index] - close[index - 1]) / close[index - 1]) * nvi;
+            }
+            outputs[0][index] = nvi;
+        }
+
+        Ok(close.len())
     }
 
     fn create_stream(
@@ -309,8 +352,59 @@ impl Indicator for Obv {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = ObvStream::new(options)?;
-        stream.feed(inputs)
+        expect_option_count(OBV_METADATA.name, options, 0)?;
+        let (close, volume) = double_input(OBV_METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(close.len());
+        let mut sum = 0.0;
+
+        if close.is_empty() {
+            return Ok(vec![output]);
+        }
+
+        output.push(sum);
+        let mut previous = close[0];
+        for index in 1..close.len() {
+            if close[index] > previous {
+                sum += volume[index];
+            } else if close[index] < previous {
+                sum -= volume[index];
+            }
+            previous = close[index];
+            output.push(sum);
+        }
+
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(OBV_METADATA.name, options, 0)?;
+        let (close, volume) = double_input(OBV_METADATA.name, inputs)?;
+        validate_output_slices(&OBV_METADATA, outputs, 1)?;
+        ensure_output_len(&OBV_METADATA, outputs[0].len(), close.len(), 0)?;
+
+        if close.is_empty() {
+            return Ok(0);
+        }
+
+        let mut sum = 0.0;
+        outputs[0][0] = sum;
+        let mut previous = close[0];
+        for index in 1..close.len() {
+            if close[index] > previous {
+                sum += volume[index];
+            } else if close[index] < previous {
+                sum -= volume[index];
+            }
+            previous = close[index];
+            outputs[0][index] = sum;
+        }
+
+        Ok(close.len())
     }
 
     fn create_stream(
@@ -331,8 +425,51 @@ impl Indicator for Pvi {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = PviStream::new(options)?;
-        stream.feed(inputs)
+        expect_option_count(PVI_METADATA.name, options, 0)?;
+        let (close, volume) = double_input(PVI_METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(close.len());
+        let mut pvi = 1000.0;
+
+        if close.is_empty() {
+            return Ok(vec![output]);
+        }
+
+        output.push(pvi);
+        for index in 1..close.len() {
+            if volume[index] > volume[index - 1] {
+                pvi += ((close[index] - close[index - 1]) / close[index - 1]) * pvi;
+            }
+            output.push(pvi);
+        }
+
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        expect_option_count(PVI_METADATA.name, options, 0)?;
+        let (close, volume) = double_input(PVI_METADATA.name, inputs)?;
+        validate_output_slices(&PVI_METADATA, outputs, 1)?;
+        ensure_output_len(&PVI_METADATA, outputs[0].len(), close.len(), 0)?;
+
+        if close.is_empty() {
+            return Ok(0);
+        }
+
+        let mut pvi = 1000.0;
+        outputs[0][0] = pvi;
+        for index in 1..close.len() {
+            if volume[index] > volume[index - 1] {
+                pvi += ((close[index] - close[index - 1]) / close[index - 1]) * pvi;
+            }
+            outputs[0][index] = pvi;
+        }
+
+        Ok(close.len())
     }
 
     fn create_stream(
