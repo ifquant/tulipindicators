@@ -33,6 +33,8 @@
 - 启动开发环境：无常驻开发服务器；通常直接编辑代码后运行构建或测试命令
 - Lint：无独立 lint 配置，不要虚构 lint 命令
 - Rust 静态检查：`cargo clippy --all-targets --all-features`
+- Rust 默认检查入口：`make rust-check`
+- 关闭 clippy 的 Rust 检查入口：`TI_ENABLE_CLIPPY=0 make rust-check`
 - Type check：无独立 type check 配置
 - 单元测试：`make smoke`
 - 集成测试：`make smoke_amal`
@@ -88,6 +90,7 @@
 - 改动单文件构建、生成脚本或公共头文件后，优先再运行：`make smoke_amal`
 - 改动 Rust 指标实现、流式路径或性能敏感逻辑时，优先再运行：`cargo run --release --bin indicator-bench`
 - 改动 Rust 代码结构、错误处理、公共接口或常量表达式时，优先再运行：`cargo clippy --all-targets --all-features`
+- 如果只是想临时跳过 clippy，可使用：`TI_ENABLE_CLIPPY=0 make rust-check`；默认仍应保持 `clippy` 开启
 - 改动 benchmark contract、性能对比口径或回归阈值逻辑时，优先再运行：`cargo run --release --bin indicator-bench-compare`
 - 修复 bug 时，优先补一个能复现该 bug 的测试，或把现有 `tests/*.txt` 样例扩充到能覆盖该场景。
 - 改动公开接口、示例程序或生成逻辑时，更新相关文档与说明。
@@ -135,6 +138,7 @@
 - `Verification:` 只允许写实际运行过的命令或人工检查；文档改动若未运行命令，明确写 `- not run (documentation-only change)`。
 - `Not included:` 不要省略。只要改动不是完整闭环，就明确写出未覆盖的指标、未迁移的路径、未确认的兼容性，避免制造“已经全好了”的错觉。
 - 对于“部分实现”“只标记一部分形式”“只迁移一批指标”这类改动，提交信息必须显式列出已覆盖范围和明确未覆盖范围。
+- Rust 检查默认通过 `make rust-check` 执行，且默认开启 `clippy`；只有在用户明确要求或当前任务确实需要暂时绕过时，才使用 `TI_ENABLE_CLIPPY=0 make rust-check`。
 - 如果涉及兼容性风险，正文首段或 `Not included:` 中必须点出受影响的对外接口、生成产物或测试基线。
 - `Co-Authored-By:` 仅在确实需要记录协作来源时再加；不要为了好看而机械追加。
 
