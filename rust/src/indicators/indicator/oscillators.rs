@@ -602,7 +602,7 @@ fn run_cvi_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real]
     let mut val = high[0] - low[0];
 
     for index in 1..lookback {
-        val = ((high[index] - low[index]) - val) * per + val;
+        val = ((high[index] - low[index]) - val).mul_add(per, val);
         lag[lag_index] = val;
         lag_index += 1;
         if lag_index == period {
@@ -612,7 +612,7 @@ fn run_cvi_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real]
 
     let mut out_index = 0usize;
     for index in lookback..high.len() {
-        val = ((high[index] - low[index]) - val) * per + val;
+        val = ((high[index] - low[index]) - val).mul_add(per, val);
         let old = lag[lag_index];
         output[out_index] = 100.0 * (val - old) / old;
         lag[lag_index] = val;
@@ -663,7 +663,7 @@ impl IndicatorStream for CviStream {
         for (&high, &low) in high.iter().zip(low.iter()) {
             let range = high - low;
             let ema = match self.ema {
-                Some(current) => (range - current) * self.multiplier + current,
+                Some(current) => (range - current).mul_add(self.multiplier, current),
                 None => range,
             };
             self.ema = Some(ema);
