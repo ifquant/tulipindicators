@@ -382,12 +382,12 @@ fn run_regression_batch(
     let mut y_sum = 0.0;
     let mut xy_sum = 0.0;
 
-    for index in 0..(period - 1) {
+    for (index, &sample) in input.iter().enumerate().take(period - 1) {
         let x = (index + 1) as Real;
         x_sum += x;
         x2_sum += x * x;
-        xy_sum += input[index] * x;
-        y_sum += input[index];
+        xy_sum += sample * x;
+        y_sum += sample;
     }
 
     let period_real = period as Real;

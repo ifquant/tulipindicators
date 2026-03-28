@@ -5,6 +5,8 @@ use crate::core::validation::{expect_option_count, parse_usize_option, single_in
 use crate::indicators::shared::{EmaState, WmaState};
 use std::collections::VecDeque;
 
+type KstOptions = (usize, usize, usize, usize, usize, usize, usize, usize);
+
 const COPP_METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "copp",
     full_name: "Coppock Curve",
@@ -189,7 +191,7 @@ impl IndicatorStream for CoppStream {
                 self.prices.pop_front();
             }
 
-            if self.prices.len() >= self.long_period + 1 {
+            if self.prices.len() > self.long_period {
                 let current = *self.prices.back().expect("current price should exist");
                 let short_base = self.prices[self.prices.len() - 1 - self.short_period];
                 let long_base = self.prices[0];
@@ -263,7 +265,7 @@ impl IndicatorStream for KstStream {
                 }
             }
 
-            if self.prices.len() >= self.periods[3] + 1 {
+            if self.prices.len() > self.periods[3] {
                 let mut value = 0.0;
                 for index in 0..4 {
                     value += self.emas[index].value() * (index as Real + 1.0);
@@ -447,9 +449,7 @@ fn parse_copp_options(options: &[Real]) -> Result<(usize, usize, usize), Indicat
     Ok((short_period, long_period, wma_period))
 }
 
-fn parse_kst_options(
-    options: &[Real],
-) -> Result<(usize, usize, usize, usize, usize, usize, usize, usize), IndicatorError> {
+fn parse_kst_options(options: &[Real]) -> Result<KstOptions, IndicatorError> {
     expect_option_count(KST_METADATA.name, options, 8)?;
     let roc1 = parse_usize_option(KST_METADATA.name, options, 0, "roc1_period", 1)?;
     let roc2 = parse_usize_option(KST_METADATA.name, options, 1, "roc2_period", 1)?;

@@ -1,6 +1,10 @@
 use crate::core::error::IndicatorError;
 use crate::core::types::Real;
 
+pub type InputPair<'a> = (&'a [Real], &'a [Real]);
+pub type InputTriple<'a> = (&'a [Real], &'a [Real], &'a [Real]);
+pub type InputQuad<'a> = (&'a [Real], &'a [Real], &'a [Real], &'a [Real]);
+
 pub fn expect_input_count(
     indicator: &'static str,
     inputs: &[&[Real]],
@@ -44,7 +48,7 @@ pub fn single_input<'a>(
 pub fn double_input<'a>(
     indicator: &'static str,
     inputs: &'a [&'a [Real]],
-) -> Result<(&'a [Real], &'a [Real]), IndicatorError> {
+) -> Result<InputPair<'a>, IndicatorError> {
     expect_input_count(indicator, inputs, 2)?;
     let expected = inputs[0].len();
 
@@ -63,7 +67,7 @@ pub fn double_input<'a>(
 pub fn triple_input<'a>(
     indicator: &'static str,
     inputs: &'a [&'a [Real]],
-) -> Result<(&'a [Real], &'a [Real], &'a [Real]), IndicatorError> {
+) -> Result<InputTriple<'a>, IndicatorError> {
     expect_input_count(indicator, inputs, 3)?;
     let expected = inputs[0].len();
 
@@ -84,7 +88,7 @@ pub fn triple_input<'a>(
 pub fn quadruple_input<'a>(
     indicator: &'static str,
     inputs: &'a [&'a [Real]],
-) -> Result<(&'a [Real], &'a [Real], &'a [Real], &'a [Real]), IndicatorError> {
+) -> Result<InputQuad<'a>, IndicatorError> {
     expect_input_count(indicator, inputs, 4)?;
     let expected = inputs[0].len();
 

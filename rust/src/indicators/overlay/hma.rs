@@ -88,8 +88,7 @@ impl Hma {
         let mut sqrt_sum = 0.0;
         let mut sqrt_weight_sum = 0.0;
 
-        for index in 0..(period - 1) {
-            let sample = input[index];
+        for (index, &sample) in input.iter().enumerate().take(period - 1) {
             weight_sum += sample * (index + 1) as Real;
             sum += sample;
 

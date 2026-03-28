@@ -121,7 +121,7 @@ fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {
 }
 
 fn trima_periods(period: usize) -> (usize, usize) {
-    if period % 2 == 0 {
+    if period.is_multiple_of(2) {
         (period / 2, period / 2 + 1)
     } else {
         let half = period / 2 + 1;
