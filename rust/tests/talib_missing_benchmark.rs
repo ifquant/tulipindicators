@@ -33,17 +33,16 @@ const INDICATORS: &[&str] = &[
 
 #[test]
 fn first_missing_batch_is_covered_by_c_and_rust_benchmarks() {
-    let config = BenchmarkConfig {
-        sizes: vec![4096],
-        stream_chunk_size: 1024,
-        min_iterations: 1,
-        target_duration: Duration::from_millis(20),
-        calibration_duration: Duration::from_millis(5),
-        repeats: 1,
-        output_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("target")
-            .join("indicator-bench"),
-    };
+    let mut config = BenchmarkConfig::default();
+    config.sizes = vec![4096];
+    config.stream_chunk_size = 1024;
+    config.min_iterations = 1;
+    config.target_duration = Duration::from_millis(20);
+    config.calibration_duration = Duration::from_millis(5);
+    config.repeats = 1;
+    config.output_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target")
+        .join("indicator-bench");
 
     let rust_rows = run_named_benchmarks(
         &config,

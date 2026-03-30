@@ -17,6 +17,13 @@
 #define SCREEN_REPEATS 1
 
 typedef struct {
+    char *indicator;
+    char *mode;
+    int input_len;
+    int iterations;
+} fixed_iteration_row;
+
+typedef struct {
     int *sizes;
     int size_count;
     int stream_chunk_size;
@@ -24,7 +31,11 @@ typedef struct {
     int target_ms;
     int calibration_ms;
     int repeats;
+    int calibration_only;
     char *indicator_filter;
+    char *fixed_iterations_file;
+    fixed_iteration_row *fixed_iterations;
+    int fixed_iteration_count;
 } bench_config;
 
 typedef struct {
@@ -93,20 +104,32 @@ static int csv_contains(const char *csv, const char *name) {
     return 0;
 }
 
+static char *dup_cstr(const char *raw) {
+    const size_t len = strlen(raw);
+    char *copy = malloc(len + 1u);
+    if (!copy) {
+        return 0;
+    }
+    memcpy(copy, raw, len + 1u);
+    return copy;
+}
+
 static void load_sizes(bench_config *config) {
     const char *raw = getenv("TI_BENCH_SIZES");
+    int *sizes;
+    int count = 0;
+    const char *cursor;
+
     if (!raw || !*raw) {
-        config->size_count = 3;
-        config->sizes = malloc(sizeof(int) * 3u);
-        config->sizes[0] = 256;
-        config->sizes[1] = 4096;
-        config->sizes[2] = 65536;
+        config->size_count = 2;
+        config->sizes = malloc(sizeof(int) * 2u);
+        config->sizes[0] = 4096;
+        config->sizes[1] = 16384;
         return;
     }
 
-    int *sizes = malloc(sizeof(int) * 32u);
-    int count = 0;
-    const char *cursor = raw;
+    sizes = malloc(sizeof(int) * 32u);
+    cursor = raw;
     while (*cursor) {
         char *end = 0;
         long value = strtol(cursor, &end, 10);
@@ -123,19 +146,106 @@ static void load_sizes(bench_config *config) {
     }
 
     if (count == 0) {
-        sizes[0] = 256;
-        sizes[1] = 4096;
-        sizes[2] = 65536;
-        count = 3;
+        sizes[0] = 4096;
+        sizes[1] = 16384;
+        count = 2;
     }
 
     config->sizes = sizes;
     config->size_count = count;
 }
 
-static void load_config(bench_config *config) {
+static int load_fixed_iterations(bench_config *config) {
+    FILE *file;
+    char line[1024];
+    int capacity = 0;
+    const char *header = "indicator\tmode\tinput_len\titerations";
+
+    if (!config->fixed_iterations_file || !*config->fixed_iterations_file) {
+        return 1;
+    }
+
+    file = fopen(config->fixed_iterations_file, "r");
+    if (!file) {
+        fprintf(stderr, "failed to open fixed iterations file: %s\n", config->fixed_iterations_file);
+        return 0;
+    }
+
+    while (fgets(line, (int)sizeof(line), file)) {
+        char *indicator;
+        char *mode;
+        char *input_len_raw;
+        char *iterations_raw;
+        char *cursor;
+
+        if (line[0] == '\0' || line[0] == '\n') {
+            continue;
+        }
+        if (strncmp(line, header, strlen(header)) == 0) {
+            continue;
+        }
+
+        indicator = strtok(line, "\t");
+        mode = strtok(0, "\t");
+        input_len_raw = strtok(0, "\t");
+        iterations_raw = strtok(0, "\t\r\n");
+        if (!indicator || !mode || !input_len_raw || !iterations_raw) {
+            fprintf(stderr, "invalid fixed iterations row: %s\n", line);
+            fclose(file);
+            return 0;
+        }
+
+        if (config->fixed_iteration_count == capacity) {
+            fixed_iteration_row *next;
+            capacity = capacity == 0 ? 64 : capacity * 2;
+            next = realloc(config->fixed_iterations, sizeof(fixed_iteration_row) * (size_t)capacity);
+            if (!next) {
+                fprintf(stderr, "failed to allocate fixed iterations rows\n");
+                fclose(file);
+                return 0;
+            }
+            config->fixed_iterations = next;
+        }
+
+        cursor = iterations_raw;
+        while (*cursor) {
+            if (*cursor == '\r' || *cursor == '\n') {
+                *cursor = '\0';
+                break;
+            }
+            ++cursor;
+        }
+
+        config->fixed_iterations[config->fixed_iteration_count].indicator = dup_cstr(indicator);
+        config->fixed_iterations[config->fixed_iteration_count].mode = dup_cstr(mode);
+        config->fixed_iterations[config->fixed_iteration_count].input_len = atoi(input_len_raw);
+        config->fixed_iterations[config->fixed_iteration_count].iterations = atoi(iterations_raw);
+        if (!config->fixed_iterations[config->fixed_iteration_count].indicator ||
+            !config->fixed_iterations[config->fixed_iteration_count].mode ||
+            config->fixed_iterations[config->fixed_iteration_count].input_len <= 0 ||
+            config->fixed_iterations[config->fixed_iteration_count].iterations <= 0) {
+            fprintf(
+                stderr,
+                "invalid fixed iterations payload: indicator=%s mode=%s input_len=%s iterations=%s\n",
+                indicator,
+                mode,
+                input_len_raw,
+                iterations_raw
+            );
+            fclose(file);
+            return 0;
+        }
+        config->fixed_iteration_count += 1;
+    }
+
+    fclose(file);
+    return 1;
+}
+
+static int load_config(bench_config *config) {
     const char *indicator_filter = getenv("TI_BENCH_INDICATORS");
     const char *profile = getenv("TI_BENCH_PROFILE");
+    const char *fixed_iterations_file = getenv("TI_BENCH_FIXED_ITERATIONS_FILE");
     memset(config, 0, sizeof(*config));
     load_sizes(config);
     config->stream_chunk_size =
@@ -163,6 +273,7 @@ static void load_config(bench_config *config) {
             getenv("TI_BENCH_CALIBRATION_MS"), default_calibration_ms);
         config->repeats = parse_positive_int(getenv("TI_BENCH_REPEATS"), default_repeats);
     }
+    config->calibration_only = parse_positive_int(getenv("TI_BENCH_CALIBRATION_ONLY"), 0);
     if (indicator_filter && *indicator_filter) {
         const size_t len = strlen(indicator_filter);
         config->indicator_filter = malloc(len + 1u);
@@ -170,11 +281,49 @@ static void load_config(bench_config *config) {
             memcpy(config->indicator_filter, indicator_filter, len + 1u);
         }
     }
+
+    if (fixed_iterations_file && *fixed_iterations_file) {
+        config->fixed_iterations_file = dup_cstr(fixed_iterations_file);
+        if (!config->fixed_iterations_file) {
+            fprintf(stderr, "failed to copy fixed iterations path\n");
+            return 0;
+        }
+        if (!load_fixed_iterations(config)) {
+            return 0;
+        }
+    }
+
+    return 1;
 }
 
 static void free_config(bench_config *config) {
+    int i;
     free(config->sizes);
     free(config->indicator_filter);
+    free(config->fixed_iterations_file);
+    for (i = 0; i < config->fixed_iteration_count; ++i) {
+        free(config->fixed_iterations[i].indicator);
+        free(config->fixed_iterations[i].mode);
+    }
+    free(config->fixed_iterations);
+}
+
+static int lookup_fixed_iterations(
+    const bench_config *config,
+    const char *indicator,
+    const char *mode,
+    int input_len
+) {
+    int i;
+    for (i = 0; i < config->fixed_iteration_count; ++i) {
+        const fixed_iteration_row *row = &config->fixed_iterations[i];
+        if (row->input_len == input_len &&
+            strcmp(row->indicator, indicator) == 0 &&
+            strcmp(row->mode, mode) == 0) {
+            return row->iterations;
+        }
+    }
+    return 0;
 }
 
 static int iterations_from_calibration(double elapsed_ms, int runs, const bench_config *config) {
@@ -412,6 +561,13 @@ static int run_batch_benchmark(
     }
 
     {
+        const int fixed_iterations =
+            lookup_fixed_iterations(config, info->name, "batch", input_len);
+        if (fixed_iterations > 0) {
+            iterations = fixed_iterations;
+            result->calibration_runs = 0;
+            result->calibration_ms = 0.0;
+        } else {
         int calibration_runs = 1;
         double calibration_ms = 0.0;
         while (1) {
@@ -434,6 +590,25 @@ static int run_batch_benchmark(
         iterations = iterations_from_calibration(calibration_ms, calibration_runs, config);
         result->calibration_runs = calibration_runs;
         result->calibration_ms = calibration_ms;
+        }
+    }
+
+    if (config->calibration_only) {
+        for (j = 0; j < info->outputs; ++j) {
+            free(outputs[j]);
+        }
+        result->indicator = info->name;
+        result->mode = "batch";
+        result->input_len = input_len;
+        result->iterations = iterations;
+        result->total_outputs = total_outputs;
+        result->sample_min_ms = 0.0;
+        result->total_ms = 0.0;
+        result->sample_max_ms = 0.0;
+        result->sample_stddev_ms = 0.0;
+        result->sample_cv = 0.0;
+        result->ns_per_input = 0.0;
+        return TI_OKAY;
     }
 
     {
@@ -540,6 +715,13 @@ static int run_stream_benchmark(
     }
 
     {
+        const int fixed_iterations =
+            lookup_fixed_iterations(config, info->name, "stream", input_len);
+        if (fixed_iterations > 0) {
+            iterations = fixed_iterations;
+            result->calibration_runs = 0;
+            result->calibration_ms = 0.0;
+        } else {
         int calibration_runs = 1;
         double calibration_ms = 0.0;
         while (1) {
@@ -590,6 +772,25 @@ static int run_stream_benchmark(
         iterations = iterations_from_calibration(calibration_ms, calibration_runs, config);
         result->calibration_runs = calibration_runs;
         result->calibration_ms = calibration_ms;
+        }
+    }
+
+    if (config->calibration_only) {
+        for (j = 0; j < info->outputs; ++j) {
+            free(chunk_outputs[j]);
+        }
+        result->indicator = info->name;
+        result->mode = "stream";
+        result->input_len = input_len;
+        result->iterations = iterations;
+        result->total_outputs = total_outputs;
+        result->sample_min_ms = 0.0;
+        result->total_ms = 0.0;
+        result->sample_max_ms = 0.0;
+        result->sample_stddev_ms = 0.0;
+        result->sample_cv = 0.0;
+        result->ns_per_input = 0.0;
+        return TI_OKAY;
     }
 
     {
@@ -683,7 +884,11 @@ static void print_result(const bench_result *result) {
 
 int main(void) {
     bench_config config;
-    load_config(&config);
+    if (!load_config(&config)) {
+        fprintf(stderr, "failed to load benchmark config\n");
+        free_config(&config);
+        return 1;
+    }
 
     printf("indicator\tmode\tinput_len\tcalibration_runs\tcalibration_ms\titerations\toutputs\tsample_min_ms\tsample_median_ms\tsample_max_ms\tsample_stddev_ms\tsample_cv\tns_per_input\n");
 

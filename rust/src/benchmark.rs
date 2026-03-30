@@ -2,18 +2,21 @@ use crate::core::error::IndicatorError;
 use crate::core::indicator::{output_len_for_input, Indicator};
 use crate::core::types::Real;
 use crate::registry;
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-const DEFAULT_SIZES: &[usize] = &[256, 4096, 65_536, 262_144];
+const DEFAULT_SIZES: &[usize] = &[4096, 16_384];
 const DEFAULT_STREAM_CHUNK: usize = 1024;
 const DEFAULT_MIN_ITERATIONS: usize = 16;
 const DEFAULT_TARGET_MS: u64 = 300;
 const DEFAULT_CALIBRATION_MS: u64 = 20;
 const DEFAULT_REPEATS: usize = 3;
+const DEFAULT_FIXED_TARGET_MS: u64 = 4_000;
+const DEFAULT_FIXED_CALIBRATION_MS: u64 = 200;
 const SCREEN_MIN_ITERATIONS: usize = 4;
 const SCREEN_TARGET_MS: u64 = 20;
 const SCREEN_CALIBRATION_MS: u64 = 5;
@@ -35,6 +38,12 @@ pub struct BenchmarkConfig {
     pub calibration_duration: Duration,
     pub repeats: usize,
     pub output_dir: PathBuf,
+    pub fixed_iterations_path: PathBuf,
+    pub fixed_target_duration: Duration,
+    pub fixed_calibration_duration: Duration,
+    pub calibration_only: bool,
+    use_fixed_iterations: bool,
+    fixed_iterations: BTreeMap<FixedIterationKey, usize>,
 }
 
 impl Default for BenchmarkConfig {
@@ -49,6 +58,14 @@ impl Default for BenchmarkConfig {
             output_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("target")
                 .join("indicator-bench"),
+            fixed_iterations_path: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("benchmarks")
+                .join("fixed-iterations.tsv"),
+            fixed_target_duration: Duration::from_millis(DEFAULT_FIXED_TARGET_MS),
+            fixed_calibration_duration: Duration::from_millis(DEFAULT_FIXED_CALIBRATION_MS),
+            calibration_only: false,
+            use_fixed_iterations: true,
+            fixed_iterations: BTreeMap::new(),
         }
     }
 }
@@ -120,11 +137,88 @@ impl BenchmarkConfig {
             }
         }
 
+        if let Ok(raw) = std::env::var("TI_BENCH_FIXED_ITERATIONS") {
+            let normalized = raw.trim().to_ascii_lowercase();
+            config.use_fixed_iterations = !matches!(normalized.as_str(), "0" | "false" | "off");
+        }
+
+        if let Ok(raw) = std::env::var("TI_BENCH_FIXED_ITERATIONS_FILE") {
+            if !raw.trim().is_empty() {
+                config.fixed_iterations_path = PathBuf::from(raw);
+            }
+        }
+
+        if let Ok(raw) = std::env::var("TI_BENCH_FIXED_TARGET_MS") {
+            if let Ok(value) = raw.parse::<u64>() {
+                if value > 0 {
+                    config.fixed_target_duration = Duration::from_millis(value);
+                }
+            }
+        }
+
+        if let Ok(raw) = std::env::var("TI_BENCH_FIXED_CALIBRATION_MS") {
+            if let Ok(value) = raw.parse::<u64>() {
+                if value > 0 {
+                    config.fixed_calibration_duration = Duration::from_millis(value);
+                }
+            }
+        }
+
+        if let Ok(raw) = std::env::var("TI_BENCH_CALIBRATION_ONLY") {
+            let normalized = raw.trim().to_ascii_lowercase();
+            config.calibration_only = !matches!(normalized.as_str(), "0" | "false" | "off");
+        }
+
+        if config.use_fixed_iterations && config.fixed_iterations_path.is_file() {
+            let raw = fs::read_to_string(&config.fixed_iterations_path).unwrap_or_else(|error| {
+                panic!(
+                    "failed to read fixed benchmark iterations from {}: {error}",
+                    config.fixed_iterations_path.display()
+                )
+            });
+            let rows = parse_fixed_iterations_tsv(&raw).unwrap_or_else(|error| {
+                panic!(
+                    "failed to parse fixed benchmark iterations from {}: {error}",
+                    config.fixed_iterations_path.display()
+                )
+            });
+            config.fixed_iterations = fixed_iterations_map(&rows);
+        }
+
         config
+    }
+
+    pub fn use_fixed_iterations(&self) -> bool {
+        self.use_fixed_iterations
+    }
+
+    pub fn without_fixed_iterations(&self) -> Self {
+        let mut config = self.clone();
+        config.use_fixed_iterations = false;
+        config.fixed_iterations.clear();
+        config
+    }
+
+    pub fn with_fixed_iterations_rows(&self, rows: &[FixedIterationRow]) -> Self {
+        let mut config = self.clone();
+        config.use_fixed_iterations = true;
+        config.fixed_iterations = fixed_iterations_map(rows);
+        config
+    }
+
+    pub fn fixed_iterations_for(
+        &self,
+        indicator: &str,
+        mode: BenchmarkMode,
+        input_len: usize,
+    ) -> Option<usize> {
+        self.fixed_iterations
+            .get(&FixedIterationKey::new(indicator, mode, input_len))
+            .copied()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BenchmarkMode {
     Batch,
     Stream,
@@ -137,6 +231,14 @@ impl BenchmarkMode {
             Self::Stream => "stream",
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct FixedIterationRow {
+    pub indicator: String,
+    pub mode: BenchmarkMode,
+    pub input_len: usize,
+    pub iterations: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -176,6 +278,23 @@ struct CalibrationResult {
     runs: usize,
     elapsed: Duration,
     iterations: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct FixedIterationKey {
+    indicator: String,
+    mode: BenchmarkMode,
+    input_len: usize,
+}
+
+impl FixedIterationKey {
+    fn new(indicator: &str, mode: BenchmarkMode, input_len: usize) -> Self {
+        Self {
+            indicator: indicator.to_string(),
+            mode,
+            input_len,
+        }
+    }
 }
 
 pub fn run_registry_benchmarks(
@@ -265,6 +384,64 @@ pub fn write_report(
     fs::write(&tsv_path, render_tsv(results))?;
 
     Ok((markdown_path, tsv_path))
+}
+
+pub fn render_fixed_iterations_tsv(rows: &[FixedIterationRow]) -> String {
+    let mut out = String::from("indicator\tmode\tinput_len\titerations\n");
+    for row in rows {
+        let _ = writeln!(
+            out,
+            "{}\t{}\t{}\t{}",
+            row.indicator,
+            row.mode.as_str(),
+            row.input_len,
+            row.iterations
+        );
+    }
+    out
+}
+
+pub fn parse_fixed_iterations_tsv(raw: &str) -> Result<Vec<FixedIterationRow>, String> {
+    let mut rows = Vec::new();
+    for (line_index, line) in raw.lines().enumerate() {
+        if line_index == 0 {
+            continue;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() != 4 {
+            return Err(format!("invalid fixed-iterations TSV row: {line}"));
+        }
+        let mode = match parts[1] {
+            "batch" => BenchmarkMode::Batch,
+            "stream" => BenchmarkMode::Stream,
+            other => return Err(format!("invalid fixed-iterations benchmark mode: {other}")),
+        };
+        rows.push(FixedIterationRow {
+            indicator: parts[0].to_string(),
+            mode,
+            input_len: parts[2]
+                .parse()
+                .map_err(|_| format!("invalid input_len in row: {line}"))?,
+            iterations: parts[3]
+                .parse()
+                .map_err(|_| format!("invalid iterations in row: {line}"))?,
+        });
+    }
+    Ok(rows)
+}
+
+fn fixed_iterations_map(rows: &[FixedIterationRow]) -> BTreeMap<FixedIterationKey, usize> {
+    rows.iter()
+        .map(|row| {
+            (
+                FixedIterationKey::new(&row.indicator, row.mode, row.input_len),
+                row.iterations,
+            )
+        })
+        .collect()
 }
 
 pub fn render_markdown(results: &[BenchmarkResult]) -> String {
@@ -421,24 +598,38 @@ fn run_batch_benchmark(
             });
         }
     }
-    let calibration = calibrate_iterations(config, |runs| {
-        for _ in 0..runs {
-            let mut outputs: Vec<&mut [Real]> =
-                output_buffers.iter_mut().map(Vec::as_mut_slice).collect();
-            let produced =
-                scenario
-                    .indicator
-                    .run_in_place(&inputs, &scenario.options, &mut outputs)?;
-            let sink = outputs
-                .first()
-                .and_then(|output| output.get(produced.saturating_sub(1)))
-                .copied()
-                .unwrap_or(0.0);
-            black_box((produced, sink));
-        }
-        Ok(())
-    })?;
-    let iterations = calibration.iterations;
+    let calibration;
+    let iterations = if let Some(locked_iterations) = config.fixed_iterations_for(
+        metadata.name,
+        BenchmarkMode::Batch,
+        scenario.inputs[0].len(),
+    ) {
+        calibration = CalibrationResult {
+            runs: 0,
+            elapsed: Duration::ZERO,
+            iterations: locked_iterations,
+        };
+        locked_iterations
+    } else {
+        calibration = calibrate_iterations(config, |runs| {
+            for _ in 0..runs {
+                let mut outputs: Vec<&mut [Real]> =
+                    output_buffers.iter_mut().map(Vec::as_mut_slice).collect();
+                let produced =
+                    scenario
+                        .indicator
+                        .run_in_place(&inputs, &scenario.options, &mut outputs)?;
+                let sink = outputs
+                    .first()
+                    .and_then(|output| output.get(produced.saturating_sub(1)))
+                    .copied()
+                    .unwrap_or(0.0);
+                black_box((produced, sink));
+            }
+            Ok(())
+        })?;
+        calibration.iterations
+    };
 
     let mut samples = Vec::with_capacity(config.repeats);
     for _ in 0..config.repeats {
@@ -497,23 +688,37 @@ fn run_stream_benchmark(
         &scenario.inputs,
         config.stream_chunk_size,
     )?;
-    let calibration = calibrate_iterations(config, |runs| {
-        for _ in 0..runs {
-            let mut stream = scenario.indicator.create_stream(&scenario.options)?.ok_or(
-                IndicatorError::MissingStreamSupport {
-                    indicator: scenario.indicator.metadata().name,
-                },
-            )?;
-            let outputs = collect_stream_outputs(
-                stream.as_mut(),
-                &scenario.inputs,
-                config.stream_chunk_size,
-            )?;
-            black_box(outputs);
-        }
-        Ok(())
-    })?;
-    let iterations = calibration.iterations;
+    let calibration;
+    let iterations = if let Some(locked_iterations) = config.fixed_iterations_for(
+        scenario.indicator.metadata().name,
+        BenchmarkMode::Stream,
+        scenario.inputs[0].len(),
+    ) {
+        calibration = CalibrationResult {
+            runs: 0,
+            elapsed: Duration::ZERO,
+            iterations: locked_iterations,
+        };
+        locked_iterations
+    } else {
+        calibration = calibrate_iterations(config, |runs| {
+            for _ in 0..runs {
+                let mut stream = scenario.indicator.create_stream(&scenario.options)?.ok_or(
+                    IndicatorError::MissingStreamSupport {
+                        indicator: scenario.indicator.metadata().name,
+                    },
+                )?;
+                let outputs = collect_stream_outputs(
+                    stream.as_mut(),
+                    &scenario.inputs,
+                    config.stream_chunk_size,
+                )?;
+                black_box(outputs);
+            }
+            Ok(())
+        })?;
+        calibration.iterations
+    };
 
     let mut samples = Vec::with_capacity(config.repeats);
     for _ in 0..config.repeats {

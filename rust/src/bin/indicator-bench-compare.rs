@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 use tulipindicators::benchmark::{
-    render_kernel_probe_tsv, render_tsv, run_named_benchmarks, run_named_kernel_probes,
-    BenchmarkConfig, BenchmarkResult, KernelProbeResult,
+    parse_fixed_iterations_tsv, render_fixed_iterations_tsv, render_kernel_probe_tsv, render_tsv,
+    run_named_benchmarks, run_named_kernel_probes, BenchmarkConfig, BenchmarkMode, BenchmarkResult,
+    FixedIterationRow, KernelProbeResult,
 };
 
 const DEFAULT_REGRESSION_WARN: f64 = 1.15;
@@ -102,6 +103,37 @@ fn main() -> ExitCode {
         .and_then(|raw| raw.parse::<f64>().ok())
         .filter(|value| *value >= 1.0)
         .unwrap_or(DEFAULT_SELF_REGRESSION_WARN);
+    let fixed_only = std::env::var("TI_BENCH_GENERATE_FIXED_ITERATIONS_ONLY")
+        .ok()
+        .map(|raw| {
+            let normalized = raw.trim().to_ascii_lowercase();
+            !matches!(normalized.as_str(), "0" | "false" | "off")
+        })
+        .unwrap_or(false);
+
+    if fixed_only {
+        if let Err(error) = fs::create_dir_all(&config.output_dir) {
+            eprintln!("benchmark compare failed: {error}");
+            return ExitCode::from(1);
+        }
+        if let Err(error) = build_c_contract_benchmark() {
+            eprintln!("benchmark compare failed: {error}");
+            return ExitCode::from(1);
+        }
+        match prepare_fixed_iterations(&config) {
+            Ok(runtime_config) => {
+                println!(
+                    "Saved fixed iterations:\n- {}",
+                    runtime_config.fixed_iterations_path.display()
+                );
+                return ExitCode::SUCCESS;
+            }
+            Err(error) => {
+                eprintln!("benchmark compare failed: {error}");
+                return ExitCode::from(1);
+            }
+        }
+    }
 
     match run_compare(&config, regression_warn, self_regression_warn) {
         Ok(paths) => {
@@ -138,6 +170,78 @@ struct ComparePaths {
     kernel_split_md: PathBuf,
 }
 
+fn prepare_fixed_iterations(config: &BenchmarkConfig) -> Result<BenchmarkConfig, String> {
+    let refresh_requested = std::env::var("TI_BENCH_REFRESH_FIXED_ITERATIONS")
+        .ok()
+        .map(|raw| {
+            let normalized = raw.trim().to_ascii_lowercase();
+            !matches!(normalized.as_str(), "0" | "false" | "off")
+        })
+        .unwrap_or(false);
+
+    if !config.use_fixed_iterations() {
+        return Ok(config.clone());
+    }
+
+    if !refresh_requested && config.fixed_iterations_path.is_file() {
+        let raw = fs::read_to_string(&config.fixed_iterations_path).map_err(|error| {
+            format!(
+                "failed to read {}: {error}",
+                config.fixed_iterations_path.display()
+            )
+        })?;
+        let rows = parse_fixed_iterations_tsv(&raw)?;
+        return Ok(config.with_fixed_iterations_rows(&rows));
+    }
+
+    let mut calibration_config = config.without_fixed_iterations();
+    calibration_config.target_duration = config.fixed_target_duration;
+    calibration_config.calibration_duration = config.fixed_calibration_duration;
+    calibration_config.repeats = 1;
+    calibration_config.calibration_only = true;
+
+    let c_rows = run_c_benchmark(&calibration_config)?;
+    let fixed_rows = build_fixed_iteration_rows(&c_rows);
+
+    if let Some(parent) = config.fixed_iterations_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create fixed-iterations directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    fs::write(
+        &config.fixed_iterations_path,
+        render_fixed_iterations_tsv(&fixed_rows),
+    )
+    .map_err(|error| {
+        format!(
+            "failed to write fixed iterations {}: {error}",
+            config.fixed_iterations_path.display()
+        )
+    })?;
+
+    Ok(config.with_fixed_iterations_rows(&fixed_rows))
+}
+
+fn build_fixed_iteration_rows(rows: &[ExternalBenchmarkRow]) -> Vec<FixedIterationRow> {
+    rows.iter()
+        .map(|row| FixedIterationRow {
+            indicator: row.indicator.clone(),
+            mode: match row.mode.as_str() {
+                "batch" => BenchmarkMode::Batch,
+                "stream" => BenchmarkMode::Stream,
+                other => {
+                    panic!("unexpected benchmark mode while building fixed iterations: {other}")
+                }
+            },
+            input_len: row.input_len,
+            iterations: row.iterations,
+        })
+        .collect()
+}
+
 fn run_compare(
     config: &BenchmarkConfig,
     regression_warn: f64,
@@ -146,12 +250,13 @@ fn run_compare(
     fs::create_dir_all(&config.output_dir).map_err(|error| error.to_string())?;
 
     build_c_contract_benchmark()?;
-    let c_rows = run_c_benchmark(config)?;
+    let runtime_config = prepare_fixed_iterations(config)?;
+    let c_rows = run_c_benchmark(&runtime_config)?;
     let indicator_names = unique_indicator_names(&c_rows);
     let rust_results =
-        run_named_benchmarks(config, &indicator_names).map_err(|e| format!("{e:?}"))?;
+        run_named_benchmarks(&runtime_config, &indicator_names).map_err(|e| format!("{e:?}"))?;
     let kernel_probes =
-        run_named_kernel_probes(config, &indicator_names).map_err(|e| format!("{e:?}"))?;
+        run_named_kernel_probes(&runtime_config, &indicator_names).map_err(|e| format!("{e:?}"))?;
     let compare_rows = compare_rows(&c_rows, &rust_results, regression_warn)?;
     let rust_best_tsv = config.output_dir.join("rust-best.tsv");
     let existing_best = if rust_best_tsv.exists() {
@@ -162,15 +267,25 @@ fn run_compare(
     let merged_best = merge_best_rows(&existing_best, &rust_results);
     let self_compare_rows = compare_self_rows(&merged_best, &rust_results, self_regression_warn)?;
 
-    let c_tsv = config.output_dir.join("c-latest.tsv");
-    let rust_tsv = config.output_dir.join("rust-stable-latest.tsv");
-    let compare_tsv = config.output_dir.join("compare-latest.tsv");
-    let compare_md = config.output_dir.join("compare-latest.md");
-    let self_compare_tsv = config.output_dir.join("rust-self-compare-latest.tsv");
-    let self_compare_md = config.output_dir.join("rust-self-compare-latest.md");
-    let kernel_probe_tsv = config.output_dir.join("rust-kernel-probes-latest.tsv");
-    let kernel_split_tsv = config.output_dir.join("rust-kernel-split-latest.tsv");
-    let kernel_split_md = config.output_dir.join("rust-kernel-split-latest.md");
+    let c_tsv = runtime_config.output_dir.join("c-latest.tsv");
+    let rust_tsv = runtime_config.output_dir.join("rust-stable-latest.tsv");
+    let compare_tsv = runtime_config.output_dir.join("compare-latest.tsv");
+    let compare_md = runtime_config.output_dir.join("compare-latest.md");
+    let self_compare_tsv = runtime_config
+        .output_dir
+        .join("rust-self-compare-latest.tsv");
+    let self_compare_md = runtime_config
+        .output_dir
+        .join("rust-self-compare-latest.md");
+    let kernel_probe_tsv = runtime_config
+        .output_dir
+        .join("rust-kernel-probes-latest.tsv");
+    let kernel_split_tsv = runtime_config
+        .output_dir
+        .join("rust-kernel-split-latest.tsv");
+    let kernel_split_md = runtime_config
+        .output_dir
+        .join("rust-kernel-split-latest.md");
     let kernel_split_rows = compare_kernel_split_rows(&rust_results, &kernel_probes);
 
     fs::write(&c_tsv, render_external_tsv(&c_rows)).map_err(|error| error.to_string())?;
@@ -245,7 +360,8 @@ fn build_c_contract_benchmark() -> Result<(), String> {
 fn run_c_benchmark(config: &BenchmarkConfig) -> Result<Vec<ExternalBenchmarkRow>, String> {
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let executable = repo_root.join("c").join("benchmark_contract");
-    let output = Command::new(&executable)
+    let mut command = Command::new(&executable);
+    command
         .env("TI_BENCH_SIZES", join_sizes(&config.sizes))
         .env(
             "TI_BENCH_STREAM_CHUNK",
@@ -259,7 +375,17 @@ fn run_c_benchmark(config: &BenchmarkConfig) -> Result<Vec<ExternalBenchmarkRow>
         .env(
             "TI_BENCH_TARGET_MS",
             config.target_duration.as_millis().to_string(),
-        )
+        );
+    if config.calibration_only {
+        command.env("TI_BENCH_CALIBRATION_ONLY", "1");
+    }
+    if config.use_fixed_iterations() && config.fixed_iterations_path.is_file() {
+        command.env(
+            "TI_BENCH_FIXED_ITERATIONS_FILE",
+            &config.fixed_iterations_path,
+        );
+    }
+    let output = command
         .output()
         .map_err(|error| format!("failed to run C benchmark_contract: {error}"))?;
     if !output.status.success() {

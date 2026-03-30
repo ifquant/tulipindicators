@@ -41,10 +41,13 @@
 - Rust benchmark：`cargo run --release --bin indicator-bench`
 - C contract benchmark：`make benchmark_contract`
 - C/Rust benchmark 对比：`cargo run --release --bin indicator-bench-compare`
+- 仅生成固定 iterations 基线：`TI_BENCH_REFRESH_FIXED_ITERATIONS=1 TI_BENCH_GENERATE_FIXED_ITERATIONS_ONLY=1 cargo run --release --bin indicator-bench-compare`
 - 快速全量筛热点：`TI_BENCH_PROFILE=screen cargo run --release --bin indicator-bench-compare`
 - Rust 历史最佳自比结果：运行 `cargo run --release --bin indicator-bench-compare` 后查看 `target/indicator-bench/rust-self-compare-latest.md` 与 `target/indicator-bench/rust-best.tsv`
 - 默认 benchmark 已偏向“更快完成全量回归”；如需提高稳定性，优先调大：`TI_BENCH_TARGET_MS`、`TI_BENCH_MIN_ITERATIONS`、`TI_BENCH_REPEATS`
 - `TI_BENCH_PROFILE=screen` 会把 compare 和 C contract 都切到快速筛查档，适合刷新全量热点榜单；研究型复核继续显式设置更大的 `TI_BENCH_TARGET_MS`、`TI_BENCH_CALIBRATION_MS`、`TI_BENCH_REPEATS`
+- 默认固定基线尺寸是 `4096` 和 `16384`；默认固定 iterations 目标时长是 `4s`，可用 `TI_BENCH_FIXED_TARGET_MS` 调整
+- 固定 iterations 基线默认从 C contract 生成，落盘到 `benchmarks/fixed-iterations.tsv`；后续 compare 会默认读取这份文件
 - 构建：`make`
 - 仅运行某个模块/包：根目录可继续运行 `make sample`、`make example1`、`make example2`、`make cli`、`make benchmark`、`make fuzzer`；C 侧真实实现位于 `c/`，Rust 侧真实实现位于 `rust/`
 - 清理构建产物：`make clean`
