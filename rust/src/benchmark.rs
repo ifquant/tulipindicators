@@ -14,6 +14,17 @@ const DEFAULT_MIN_ITERATIONS: usize = 16;
 const DEFAULT_TARGET_MS: u64 = 300;
 const DEFAULT_CALIBRATION_MS: u64 = 20;
 const DEFAULT_REPEATS: usize = 3;
+const SCREEN_MIN_ITERATIONS: usize = 4;
+const SCREEN_TARGET_MS: u64 = 20;
+const SCREEN_CALIBRATION_MS: u64 = 5;
+const SCREEN_REPEATS: usize = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BenchmarkProfile {
+    Default,
+    Screen,
+    Research,
+}
 
 #[derive(Debug, Clone)]
 pub struct BenchmarkConfig {
@@ -45,6 +56,22 @@ impl Default for BenchmarkConfig {
 impl BenchmarkConfig {
     pub fn from_env() -> Self {
         let mut config = Self::default();
+        let profile = std::env::var("TI_BENCH_PROFILE")
+            .ok()
+            .map(|raw| raw.to_ascii_lowercase())
+            .map(|raw| match raw.as_str() {
+                "screen" | "screening" | "fast" => BenchmarkProfile::Screen,
+                "research" | "stable" | "thorough" => BenchmarkProfile::Research,
+                _ => BenchmarkProfile::Default,
+            })
+            .unwrap_or(BenchmarkProfile::Default);
+
+        if profile == BenchmarkProfile::Screen {
+            config.min_iterations = SCREEN_MIN_ITERATIONS;
+            config.target_duration = Duration::from_millis(SCREEN_TARGET_MS);
+            config.calibration_duration = Duration::from_millis(SCREEN_CALIBRATION_MS);
+            config.repeats = SCREEN_REPEATS;
+        }
 
         if let Ok(raw) = std::env::var("TI_BENCH_SIZES") {
             let sizes = parse_csv_usize(&raw);

@@ -11,6 +11,10 @@
 #define DEFAULT_TARGET_MS 300
 #define DEFAULT_CALIBRATION_MS 20
 #define DEFAULT_REPEATS 3
+#define SCREEN_MIN_ITERATIONS 4
+#define SCREEN_TARGET_MS 20
+#define SCREEN_CALIBRATION_MS 5
+#define SCREEN_REPEATS 1
 
 typedef struct {
     int *sizes;
@@ -131,16 +135,34 @@ static void load_sizes(bench_config *config) {
 
 static void load_config(bench_config *config) {
     const char *indicator_filter = getenv("TI_BENCH_INDICATORS");
+    const char *profile = getenv("TI_BENCH_PROFILE");
     memset(config, 0, sizeof(*config));
     load_sizes(config);
     config->stream_chunk_size =
         parse_positive_int(getenv("TI_BENCH_STREAM_CHUNK"), DEFAULT_STREAM_CHUNK);
-    config->min_iterations =
-        parse_positive_int(getenv("TI_BENCH_MIN_ITERATIONS"), DEFAULT_MIN_ITERATIONS);
-    config->target_ms = parse_positive_int(getenv("TI_BENCH_TARGET_MS"), DEFAULT_TARGET_MS);
-    config->calibration_ms =
-        parse_positive_int(getenv("TI_BENCH_CALIBRATION_MS"), DEFAULT_CALIBRATION_MS);
-    config->repeats = parse_positive_int(getenv("TI_BENCH_REPEATS"), DEFAULT_REPEATS);
+    {
+        int default_min_iterations = DEFAULT_MIN_ITERATIONS;
+        int default_target_ms = DEFAULT_TARGET_MS;
+        int default_calibration_ms = DEFAULT_CALIBRATION_MS;
+        int default_repeats = DEFAULT_REPEATS;
+
+        if (profile && *profile) {
+            if (strcmp(profile, "screen") == 0 || strcmp(profile, "screening") == 0 ||
+                strcmp(profile, "fast") == 0) {
+                default_min_iterations = SCREEN_MIN_ITERATIONS;
+                default_target_ms = SCREEN_TARGET_MS;
+                default_calibration_ms = SCREEN_CALIBRATION_MS;
+                default_repeats = SCREEN_REPEATS;
+            }
+        }
+
+        config->min_iterations =
+            parse_positive_int(getenv("TI_BENCH_MIN_ITERATIONS"), default_min_iterations);
+        config->target_ms = parse_positive_int(getenv("TI_BENCH_TARGET_MS"), default_target_ms);
+        config->calibration_ms = parse_positive_int(
+            getenv("TI_BENCH_CALIBRATION_MS"), default_calibration_ms);
+        config->repeats = parse_positive_int(getenv("TI_BENCH_REPEATS"), default_repeats);
+    }
     if (indicator_filter && *indicator_filter) {
         const size_t len = strlen(indicator_filter);
         config->indicator_filter = malloc(len + 1u);
