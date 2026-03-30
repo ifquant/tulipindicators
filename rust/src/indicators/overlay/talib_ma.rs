@@ -184,6 +184,10 @@ fn run_mavp_batch(
         return Ok(0);
     }
 
+    if ma_type == TalibMaType::Sma {
+        return run_mavp_sma_batch(input, periods, min_period, max_period, lookback, output);
+    }
+
     let mut cache: BTreeMap<usize, Vec<Real>> = BTreeMap::new();
 
     for (out_index, actual_index) in (lookback..input.len()).enumerate() {
@@ -201,6 +205,33 @@ fn run_mavp_batch(
     }
 
     Ok(input.len() - lookback)
+}
+
+fn run_mavp_sma_batch(
+    input: &[Real],
+    periods: &[Real],
+    min_period: usize,
+    max_period: usize,
+    lookback: usize,
+    output: &mut [Real],
+) -> Result<usize, IndicatorError> {
+    let mut prefix = Vec::with_capacity(input.len() + 1);
+    prefix.push(0.0);
+    let mut running = 0.0;
+    for &sample in input {
+        running += sample;
+        prefix.push(running);
+    }
+
+    let mut out_index = 0usize;
+    for index in lookback..input.len() {
+        let period = clamp_period(periods[index], min_period, max_period)?;
+        let sum = prefix[index + 1] - prefix[index + 1 - period];
+        output[out_index] = sum / period as Real;
+        out_index += 1;
+    }
+
+    Ok(out_index)
 }
 
 fn clamp_period(
