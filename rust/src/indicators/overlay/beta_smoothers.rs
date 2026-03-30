@@ -5,7 +5,6 @@ use crate::core::validation::{
     double_input, expect_option_count, parse_usize_option, single_input,
 };
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue};
-use std::collections::VecDeque;
 
 const ALMA_METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "alma",
@@ -216,24 +215,24 @@ struct MamaStream {
     progress: usize,
     fastlimit: Real,
     slowlimit: Real,
-    price: SmallHistory,
-    smooth: SmallHistory,
-    detrender: SmallHistory,
-    i1: SmallHistory,
-    q1: SmallHistory,
-    ji: SmallHistory,
-    jq: SmallHistory,
-    i2: SmallHistory,
-    q2: SmallHistory,
-    re: SmallHistory,
-    im: SmallHistory,
-    period: SmallHistory,
-    smoothperiod: SmallHistory,
-    phase: SmallHistory,
-    deltaphase: SmallHistory,
-    alpha: SmallHistory,
-    mama: SmallHistory,
-    fama: SmallHistory,
+    price: RingHistory<4>,
+    smooth: RingHistory<7>,
+    detrender: RingHistory<7>,
+    i1: RingHistory<7>,
+    q1: RingHistory<7>,
+    ji: RingHistory<1>,
+    jq: RingHistory<1>,
+    i2: RingHistory<2>,
+    q2: RingHistory<2>,
+    re: RingHistory<2>,
+    im: RingHistory<2>,
+    period: RingHistory<2>,
+    smoothperiod: RingHistory<2>,
+    phase: RingHistory<2>,
+    deltaphase: RingHistory<1>,
+    alpha: RingHistory<1>,
+    mama: RingHistory<1>,
+    fama: RingHistory<1>,
 }
 
 impl MamaStream {
@@ -243,24 +242,24 @@ impl MamaStream {
             progress: 0,
             fastlimit,
             slowlimit,
-            price: SmallHistory::new(4),
-            smooth: SmallHistory::new(7),
-            detrender: SmallHistory::new(7),
-            i1: SmallHistory::new(7),
-            q1: SmallHistory::new(7),
-            ji: SmallHistory::new(1),
-            jq: SmallHistory::new(1),
-            i2: SmallHistory::new(2),
-            q2: SmallHistory::new(2),
-            re: SmallHistory::new(2),
-            im: SmallHistory::new(2),
-            period: SmallHistory::new(2),
-            smoothperiod: SmallHistory::new(2),
-            phase: SmallHistory::new(2),
-            deltaphase: SmallHistory::new(1),
-            alpha: SmallHistory::new(1),
-            mama: SmallHistory::new(1),
-            fama: SmallHistory::new(1),
+            price: RingHistory::new(),
+            smooth: RingHistory::new(),
+            detrender: RingHistory::new(),
+            i1: RingHistory::new(),
+            q1: RingHistory::new(),
+            ji: RingHistory::new(),
+            jq: RingHistory::new(),
+            i2: RingHistory::new(),
+            q2: RingHistory::new(),
+            re: RingHistory::new(),
+            im: RingHistory::new(),
+            period: RingHistory::new(),
+            smoothperiod: RingHistory::new(),
+            phase: RingHistory::new(),
+            deltaphase: RingHistory::new(),
+            alpha: RingHistory::new(),
+            mama: RingHistory::new(),
+            fama: RingHistory::new(),
         })
     }
 
@@ -536,47 +535,55 @@ fn parse_mama_options(options: &[Real]) -> Result<(Real, Real), IndicatorError> 
     Ok((fastlimit, slowlimit))
 }
 
-fn hilbert_transform(history: &SmallHistory, period: Real) -> Real {
+fn hilbert_transform<const N: usize>(history: &RingHistory<N>, period: Real) -> Real {
     (0.0962 * history.current() + 0.5769 * history.prev(2)
         - 0.5769 * history.prev(4)
         - 0.0962 * history.prev(6))
         * (0.075 * period + 0.54)
 }
 
-#[derive(Debug, Clone)]
-struct SmallHistory {
-    capacity: usize,
-    values: VecDeque<Real>,
+#[derive(Debug, Clone, Copy)]
+struct RingHistory<const N: usize> {
+    len: usize,
+    index: usize,
+    values: [Real; N],
 }
 
-impl SmallHistory {
-    fn new(capacity: usize) -> Self {
+impl<const N: usize> RingHistory<N> {
+    fn new() -> Self {
         Self {
-            capacity,
-            values: VecDeque::with_capacity(capacity),
+            len: 0,
+            index: 0,
+            values: [0.0; N],
         }
     }
 
     fn push(&mut self, value: Real) {
-        if self.values.len() == self.capacity {
-            self.values.pop_front();
+        if self.len == 0 {
+            self.values[0] = value;
+            self.len = 1;
+            self.index = 0;
+            return;
         }
-        self.values.push_back(value);
+        self.index = (self.index + 1) % N;
+        self.values[self.index] = value;
+        if self.len < N {
+            self.len += 1;
+        }
     }
 
     fn current(&self) -> Real {
-        *self
-            .values
-            .back()
-            .expect("history should contain a current value")
+        debug_assert!(self.len > 0, "history should contain a current value");
+        self.values[self.index]
     }
 
     fn prev(&self, steps: usize) -> Real {
-        let index = self
-            .values
-            .len()
-            .checked_sub(steps + 1)
-            .expect("history should contain the requested offset");
+        debug_assert!(
+            self.len > steps,
+            "history should contain the requested offset"
+        );
+        let offset = steps % N;
+        let index = (self.index + N - offset) % N;
         self.values[index]
     }
 }
