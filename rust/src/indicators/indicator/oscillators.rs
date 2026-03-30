@@ -284,8 +284,12 @@ impl Indicator for Md {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = MdStream::new(options)?;
-        stream.feed(inputs)
+        let input = single_input(MD_METADATA.name, inputs)?;
+        let period = parse_period(MD_METADATA.name, options)?;
+        let mut output = vec![0.0; input.len().saturating_sub(period - 1)];
+        let produced = run_md_batch(input, period, &mut output);
+        output.truncate(produced);
+        Ok(vec![output])
     }
 
     fn run_in_place(
@@ -300,26 +304,7 @@ impl Indicator for Md {
         let output_len = input.len().saturating_sub(period - 1);
         ensure_output_len(&MD_METADATA, outputs[0].len(), output_len, 0)?;
 
-        if output_len == 0 {
-            return Ok(0);
-        }
-
-        let mut sum = 0.0;
-        for value in input.iter().take(period) {
-            sum += *value;
-        }
-
-        outputs[0][0] = mean_deviation_window(&input[..period], sum, period);
-
-        for index in period..input.len() {
-            sum += input[index];
-            sum -= input[index - period];
-            let output_index = index - period + 1;
-            outputs[0][output_index] =
-                mean_deviation_window(&input[output_index..=index], sum, period);
-        }
-
-        Ok(output_len)
+        Ok(run_md_batch(input, period, &mut outputs[0][..output_len]))
     }
 
     fn create_stream(
@@ -363,8 +348,31 @@ impl Indicator for Qstick {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = QstickStream::new(options)?;
-        stream.feed(inputs)
+        let (open, close) = double_input(QSTICK_METADATA.name, inputs)?;
+        let period = parse_period(QSTICK_METADATA.name, options)?;
+        let mut output = vec![0.0; open.len().saturating_sub(period - 1)];
+        let produced = run_qstick_batch(open, close, period, &mut output);
+        output.truncate(produced);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (open, close) = double_input(QSTICK_METADATA.name, inputs)?;
+        let period = parse_period(QSTICK_METADATA.name, options)?;
+        validate_output_slices(&QSTICK_METADATA, outputs, 1)?;
+        let output_len = open.len().saturating_sub(period - 1);
+        ensure_output_len(&QSTICK_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_qstick_batch(
+            open,
+            close,
+            period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -373,6 +381,29 @@ impl Indicator for Qstick {
     ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
         Ok(Some(Box::new(QstickStream::new(options)?)))
     }
+}
+
+fn run_md_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    let output_len = input.len().saturating_sub(period - 1);
+    if output_len == 0 {
+        return 0;
+    }
+
+    let mut sum = 0.0;
+    for value in input.iter().take(period) {
+        sum += *value;
+    }
+
+    output[0] = mean_deviation_window(&input[..period], sum, period);
+
+    for index in period..input.len() {
+        sum += input[index];
+        sum -= input[index - period];
+        let output_index = index - period + 1;
+        output[output_index] = mean_deviation_window(&input[output_index..=index], sum, period);
+    }
+
+    output_len
 }
 
 struct CciStream {
@@ -863,6 +894,25 @@ fn mean_deviation_window(window: &[Real], sum: Real, period: usize) -> Real {
         .map(|value| (avg - *value).abs())
         .sum::<Real>();
     acc / period as Real
+}
+
+fn run_qstick_batch(open: &[Real], close: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if open.len() < period {
+        return 0;
+    }
+
+    let mut sum = RingSum::new(period);
+    let mut out_index = 0usize;
+
+    for (&open, &close) in open.iter().zip(close.iter()) {
+        sum.push(close - open);
+        if sum.is_full() {
+            output[out_index] = sum.sum / period as Real;
+            out_index += 1;
+        }
+    }
+
+    out_index
 }
 
 struct MswStream {
