@@ -136,6 +136,12 @@ lappend indicators [list indicator "Average Directional Movement Index" adx 2 1 
 lappend indicators [list indicator "Average Directional Movement Rating" adxr 2 1 1 {high low} {period} {adxr}]
 
 #Waves
+lappend indicators [list indicator "Hilbert Transform - Dominant Cycle Period" ht_dcperiod 1 0 1 {real} {} {ht_dcperiod}]
+lappend indicators [list indicator "Hilbert Transform - Dominant Cycle Phase" ht_dcphase 1 0 1 {real} {} {ht_dcphase}]
+lappend indicators [list indicator "Hilbert Transform - Phasor Components" ht_phasor 1 0 2 {real} {} {inphase quadrature}]
+lappend indicators [list indicator "Hilbert Transform - SineWave" ht_sine 1 0 2 {real} {} {sine lead_sine}]
+lappend indicators [list indicator "Hilbert Transform - Instantaneous Trendline" ht_trendline 1 0 1 {real} {} {ht_trendline}]
+lappend indicators [list indicator "Hilbert Transform - Trend vs Cycle Mode" ht_trendmode 1 0 1 {real} {} {ht_trendmode}]
 lappend indicators [list indicator "Mesa Sine Wave" msw 1 1 2 {real} {period} {msw_sine msw_lead}]
 
 #Rate of return, rate of change, momentum indicators

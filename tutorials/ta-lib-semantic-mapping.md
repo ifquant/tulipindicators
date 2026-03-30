@@ -53,8 +53,12 @@
 - `ma`
 - `mavp`
 - `macdext`
+- `macdfix`
+- `beta`
+- `correl`
 - `sarext`
 - `t3`
+- `imi`
 - `ht_*` Hilbert Transform 家族
 
 ## 第一批实现
@@ -126,7 +130,7 @@
 
 ## 当前仍未补齐
 
-完成前五批之后，当前还明确保留为缺失的是：
+完成 `ht_*` 之后，当前按本地 TA-Lib 源码重新核对，明确还缺的是：
 
+- `imi`
 - `sarext`
-- `ht_*` Hilbert Transform 家族

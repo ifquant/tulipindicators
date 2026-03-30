@@ -133,6 +133,7 @@ fn default_options(indicator: &str) -> Vec<Real> {
         "bbands" => vec![5.0, 2.0],
         "kst" => vec![10.0, 15.0, 20.0, 30.0, 10.0, 10.0, 10.0, 15.0],
         "macd" => vec![12.0, 26.0, 9.0],
+        "macdext" => vec![12.0, 1.0, 26.0, 1.0, 9.0, 1.0],
         "mama" => vec![0.5, 0.05],
         "psar" => vec![0.02, 0.2],
         "ultosc" => vec![5.0, 7.0, 10.0],

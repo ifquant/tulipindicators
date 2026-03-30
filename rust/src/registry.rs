@@ -1,10 +1,11 @@
 use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
     Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmf, Cmo, Copp, Cvi, Di, Dm,
-    Dpo, Dx, Emv, Fi, Fisher, Fosc, Kst, Kvo, LinReg, LinRegAngle, LinRegIntercept, LinRegSlope,
-    Macd, MacdExt, MacdFix, MarketFi, Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo,
-    Psar, Pvi, Qstick, Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr,
-    Trix, Tsf, Tsi, UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
+    Dpo, Dx, Emv, Fi, Fisher, Fosc, HtDcPeriod, HtDcPhase, HtPhasor, HtSine, HtTrendMode,
+    HtTrendline, Kst, Kvo, LinReg, LinRegAngle, LinRegIntercept, LinRegSlope, Macd, MacdExt,
+    MacdFix, MarketFi, Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo, Psar, Pvi, Qstick,
+    Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf, Tsi,
+    UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
 };
 use crate::indicators::math::{
     Beta, Correl, CrossAny, Crossover, Decay, EDecay, Lag, Max, MaxIndex, MidPoint, Min, MinIndex,
@@ -69,6 +70,12 @@ pub static FISHER: Fisher = Fisher;
 pub static FLOOR: Floor = Floor;
 pub static FOSC: Fosc = Fosc;
 pub static HMA: Hma = Hma;
+pub static HT_DCPERIOD: HtDcPeriod = HtDcPeriod;
+pub static HT_DCPHASE: HtDcPhase = HtDcPhase;
+pub static HT_PHASOR: HtPhasor = HtPhasor;
+pub static HT_SINE: HtSine = HtSine;
+pub static HT_TRENDLINE: HtTrendline = HtTrendline;
+pub static HT_TRENDMODE: HtTrendMode = HtTrendMode;
 pub static IKHTS: Ikhts = Ikhts;
 pub static KAMA: Kama = Kama;
 pub static KC: Kc = Kc;
@@ -161,7 +168,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 140] {
+pub fn all() -> [&'static dyn Indicator; 146] {
     [
         &ABS,
         &ACOS,
@@ -212,6 +219,12 @@ pub fn all() -> [&'static dyn Indicator; 140] {
         &FLOOR,
         &FOSC,
         &HMA,
+        &HT_DCPERIOD,
+        &HT_DCPHASE,
+        &HT_PHASOR,
+        &HT_SINE,
+        &HT_TRENDLINE,
+        &HT_TRENDMODE,
         &IKHTS,
         &KAMA,
         &KC,
@@ -357,6 +370,12 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "floor" => Some(&FLOOR),
         "fosc" => Some(&FOSC),
         "hma" => Some(&HMA),
+        "ht_dcperiod" => Some(&HT_DCPERIOD),
+        "ht_dcphase" => Some(&HT_DCPHASE),
+        "ht_phasor" => Some(&HT_PHASOR),
+        "ht_sine" => Some(&HT_SINE),
+        "ht_trendline" => Some(&HT_TRENDLINE),
+        "ht_trendmode" => Some(&HT_TRENDMODE),
         "ikhts" => Some(&IKHTS),
         "kama" => Some(&KAMA),
         "kc" => Some(&KC),

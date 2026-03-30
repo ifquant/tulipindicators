@@ -141,6 +141,26 @@ fn first_missing_batch_matches_c_and_expected_values() {
     );
 }
 
+#[test]
+fn ht_family_matches_local_talib_default_semantics() {
+    let input = vec![
+        101.0, 102.5, 103.0, 102.0, 101.5, 102.8, 104.2, 105.7, 104.9, 103.8, 102.6, 101.9, 102.3,
+        103.7, 105.1, 106.4, 107.0, 106.2, 105.3, 104.1, 103.4, 104.7, 106.0, 107.8, 108.5, 107.2,
+        105.9, 104.8, 103.6, 102.9, 103.8, 105.4, 106.8, 107.1, 106.0, 104.4, 103.1, 102.5, 103.0,
+        104.9, 106.7, 108.2, 109.1, 108.3, 107.0, 105.6, 104.3, 103.5, 104.1, 105.8, 107.4, 108.9,
+        109.7, 108.8, 107.6, 106.1, 104.7, 103.2, 102.8, 103.9, 105.5, 106.9, 108.4, 109.2, 108.1,
+        106.6, 105.2, 104.0, 103.3, 104.4, 106.2, 107.7, 109.0, 109.8, 108.9, 107.5, 106.0, 104.6,
+        103.8, 104.7, 106.5, 108.1, 109.4, 110.0, 108.7, 107.1, 105.5, 104.2, 103.7, 104.8, 106.4,
+        108.0, 109.5, 110.3, 109.1, 107.8,
+    ];
+    assert_matches_talib("ht_dcperiod", &[], std::slice::from_ref(&input));
+    assert_matches_talib("ht_dcphase", &[], std::slice::from_ref(&input));
+    assert_matches_talib("ht_phasor", &[], std::slice::from_ref(&input));
+    assert_matches_talib("ht_sine", &[], std::slice::from_ref(&input));
+    assert_matches_talib("ht_trendline", &[], std::slice::from_ref(&input));
+    assert_matches_talib("ht_trendmode", &[], std::slice::from_ref(&input));
+}
+
 fn assert_case(name: &str, options: &[Real], inputs: &[Vec<Real>], expected: &[Vec<Real>]) {
     let indicator = tulipindicators::find(name).expect("indicator should be registered");
     let rust_inputs: Vec<&[Real]> = inputs.iter().map(Vec::as_slice).collect();
@@ -287,6 +307,19 @@ fn assert_same_series(name: &str, side: &str, left: &[Real], right: &[Real]) {
     }
 }
 
+fn assert_matches_talib(name: &str, options: &[Real], inputs: &[Vec<Real>]) {
+    let indicator = tulipindicators::find(name).expect("indicator should be registered");
+    let rust_inputs: Vec<&[Real]> = inputs.iter().map(Vec::as_slice).collect();
+    let rust_outputs = indicator
+        .run(&rust_inputs, options)
+        .expect("rust run should succeed");
+    let c_outputs = run_c_oracle(&ensure_stable_oracle(), name, options, inputs);
+    let talib_outputs = run_c_oracle(&ensure_talib_oracle(), name, options, inputs);
+    assert_same_outputs(name, "rust-vs-c", &rust_outputs, &c_outputs);
+    assert_same_outputs(name, "rust-vs-talib", &rust_outputs, &talib_outputs);
+    assert_same_outputs(name, "c-vs-talib", &c_outputs, &talib_outputs);
+}
+
 fn ensure_stable_oracle() -> PathBuf {
     static ORACLE: OnceLock<PathBuf> = OnceLock::new();
     ORACLE
@@ -328,6 +361,43 @@ fn ensure_stable_oracle() -> PathBuf {
                 .status()
                 .expect("failed to compile stable oracle");
             assert!(status.success(), "failed to compile stable oracle");
+
+            oracle
+        })
+        .clone()
+}
+
+fn ensure_talib_oracle() -> PathBuf {
+    static ORACLE: OnceLock<PathBuf> = OnceLock::new();
+    ORACLE
+        .get_or_init(|| {
+            let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let target_dir = repo_root.join("target").join("talib-parity");
+            let oracle = target_dir.join("talib_missing_oracle");
+
+            fs::create_dir_all(&target_dir).expect("failed to create ta-lib parity target dir");
+
+            let helper = repo_root
+                .join("rust")
+                .join("tests")
+                .join("support")
+                .join("talib_missing_oracle.c");
+
+            let status = Command::new("cc")
+                .arg("-std=c99")
+                .arg("-O2")
+                .arg("-I")
+                .arg("/opt/homebrew/include")
+                .arg(&helper)
+                .arg("-L")
+                .arg("/opt/homebrew/lib")
+                .arg("-lta-lib")
+                .arg("-lm")
+                .arg("-o")
+                .arg(&oracle)
+                .status()
+                .expect("failed to compile ta-lib oracle");
+            assert!(status.success(), "failed to compile ta-lib oracle");
 
             oracle
         })
