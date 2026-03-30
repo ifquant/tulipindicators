@@ -897,9 +897,9 @@ fn run_beta_batch(left: &[Real], right: &[Real], period: usize, output: &mut [Re
     }
 
     let mut out_index = 0usize;
-    let mut denom = n * sxx - sx * sx;
+    let mut denom = (-sx).mul_add(sx, n * sxx);
     output[out_index] = if denom != 0.0 {
-        (n * sxy - sx * sy) / denom
+        ((-sx).mul_add(sy, n * sxy)) / denom
     } else {
         0.0
     };
@@ -914,12 +914,12 @@ fn run_beta_batch(left: &[Real], right: &[Real], period: usize, output: &mut [Re
 
         sx += add_x - sub_x;
         sy += add_y - sub_y;
-        sxx += add_x * add_x - sub_x * sub_x;
-        sxy += add_x * add_y - sub_x * sub_y;
+        sxx += (-sub_x).mul_add(sub_x, add_x * add_x);
+        sxy += (-sub_x).mul_add(sub_y, add_x * add_y);
 
-        denom = n * sxx - sx * sx;
+        denom = (-sx).mul_add(sx, n * sxx);
         output[out_index] = if denom != 0.0 {
-            (n * sxy - sx * sy) / denom
+            ((-sx).mul_add(sy, n * sxy)) / denom
         } else {
             0.0
         };
