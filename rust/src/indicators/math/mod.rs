@@ -952,11 +952,11 @@ fn run_correl_batch(left: &[Real], right: &[Real], period: usize, output: &mut [
     }
 
     let mut out_index = 0usize;
-    let mut xdiff = n * sxx - sx * sx;
-    let mut ydiff = n * syy - sy * sy;
+    let mut xdiff = (-sx).mul_add(sx, n * sxx);
+    let mut ydiff = (-sy).mul_add(sy, n * syy);
     let mut denom = xdiff * ydiff;
     output[out_index] = if denom > 0.0 {
-        (n * sxy - sx * sy) / denom.sqrt()
+        ((-sx).mul_add(sy, n * sxy)) / denom.sqrt()
     } else {
         0.0
     };
@@ -970,15 +970,15 @@ fn run_correl_batch(left: &[Real], right: &[Real], period: usize, output: &mut [
 
         sx += add_x - sub_x;
         sy += add_y - sub_y;
-        sxx += add_x * add_x - sub_x * sub_x;
-        syy += add_y * add_y - sub_y * sub_y;
-        sxy += add_x * add_y - sub_x * sub_y;
+        sxx += (-sub_x).mul_add(sub_x, add_x * add_x);
+        syy += (-sub_y).mul_add(sub_y, add_y * add_y);
+        sxy += (-sub_x).mul_add(sub_y, add_x * add_y);
 
-        xdiff = n * sxx - sx * sx;
-        ydiff = n * syy - sy * sy;
+        xdiff = (-sx).mul_add(sx, n * sxx);
+        ydiff = (-sy).mul_add(sy, n * syy);
         denom = xdiff * ydiff;
         output[out_index] = if denom > 0.0 {
-            (n * sxy - sx * sy) / denom.sqrt()
+            ((-sx).mul_add(sy, n * sxy)) / denom.sqrt()
         } else {
             0.0
         };
