@@ -186,13 +186,16 @@ fn run_sarext_batch(
     new_high = high[today];
     new_low = low[today];
 
-    let mut out_index = 0usize;
+    let mut outputs = output.iter_mut();
     while today < high.len() {
         let prev_high = new_high;
         let prev_low = new_low;
         new_high = high[today];
         new_low = low[today];
         today += 1;
+        let slot = outputs
+            .next()
+            .expect("sarext output buffer should match lookback-adjusted input length");
 
         if is_long {
             if new_low <= sar {
@@ -209,12 +212,11 @@ fn run_sarext_batch(
                 if options.offset_on_reverse != 0.0 {
                     sar += sar * options.offset_on_reverse;
                 }
-                output[out_index] = -sar;
-                out_index += 1;
+                *slot = -sar;
 
                 af_short = options.acceleration_init_short;
                 ep = new_low;
-                sar += af_short * (ep - sar);
+                sar = (ep - sar).mul_add(af_short, sar);
                 if sar < prev_high {
                     sar = prev_high;
                 }
@@ -222,8 +224,7 @@ fn run_sarext_batch(
                     sar = new_high;
                 }
             } else {
-                output[out_index] = sar;
-                out_index += 1;
+                *slot = sar;
 
                 if new_high > ep {
                     ep = new_high;
@@ -231,7 +232,7 @@ fn run_sarext_batch(
                         (af_long + options.acceleration_long).min(options.acceleration_max_long);
                 }
 
-                sar += af_long * (ep - sar);
+                sar = (ep - sar).mul_add(af_long, sar);
                 if sar > prev_low {
                     sar = prev_low;
                 }
@@ -253,12 +254,11 @@ fn run_sarext_batch(
             if options.offset_on_reverse != 0.0 {
                 sar -= sar * options.offset_on_reverse;
             }
-            output[out_index] = sar;
-            out_index += 1;
+            *slot = sar;
 
             af_long = options.acceleration_init_long;
             ep = new_high;
-            sar += af_long * (ep - sar);
+            sar = (ep - sar).mul_add(af_long, sar);
             if sar > prev_low {
                 sar = prev_low;
             }
@@ -266,8 +266,7 @@ fn run_sarext_batch(
                 sar = new_low;
             }
         } else {
-            output[out_index] = -sar;
-            out_index += 1;
+            *slot = -sar;
 
             if new_low < ep {
                 ep = new_low;
@@ -275,7 +274,7 @@ fn run_sarext_batch(
                     (af_short + options.acceleration_short).min(options.acceleration_max_short);
             }
 
-            sar += af_short * (ep - sar);
+            sar = (ep - sar).mul_add(af_short, sar);
             if sar < prev_high {
                 sar = prev_high;
             }
@@ -285,5 +284,5 @@ fn run_sarext_batch(
         }
     }
 
-    out_index
+    output.len()
 }
