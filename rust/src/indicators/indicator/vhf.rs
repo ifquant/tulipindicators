@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue};
@@ -27,8 +29,30 @@ impl Indicator for Vhf {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = VhfStream::new(options)?;
-        stream.feed(inputs)
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let mut output = vec![0.0; input.len().saturating_sub(period)];
+        let produced = run_vhf_batch(input, period, &mut output);
+        output.truncate(produced);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(
+            &METADATA,
+            outputs[0].len(),
+            input.len().saturating_sub(period),
+            0,
+        )?;
+        Ok(run_vhf_batch(input, period, outputs[0]))
     }
 
     fn create_stream(
@@ -111,6 +135,49 @@ impl IndicatorStream for VhfStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_vhf_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() <= period {
+        return 0;
+    }
+
+    let mut values: VecDeque<Real> = VecDeque::with_capacity(period + 1);
+    let mut change_sum = 0.0;
+    let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
+    let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+    let mut out_index = 0usize;
+
+    for (index, &sample) in input.iter().enumerate() {
+        if let Some(previous) = values.back().copied() {
+            change_sum += (sample - previous).abs();
+        }
+
+        values.push_back(sample);
+        max_queue.push(index, sample);
+        min_queue.push(index, sample);
+
+        if values.len() > period + 1 {
+            let removed = values
+                .pop_front()
+                .expect("vhf batch window should not be empty");
+            let next = *values
+                .front()
+                .expect("vhf batch window should retain one sample");
+            change_sum -= (next - removed).abs();
+        }
+
+        if index >= period {
+            let window_start = index + 1 - period;
+            max_queue.evict_before(window_start);
+            min_queue.evict_before(window_start);
+            output[out_index] =
+                (max_queue.front_value() - min_queue.front_value()).abs() / change_sum;
+            out_index += 1;
+        }
+    }
+
+    out_index
 }
 
 fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {

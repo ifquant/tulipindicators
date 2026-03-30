@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{double_input, expect_option_count, parse_usize_option};
 use crate::indicators::shared::{EmaState, RingSum};
@@ -29,8 +31,30 @@ impl Indicator for Mass {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = MassStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low) = double_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let mut output = vec![0.0; high.len().saturating_sub(period + 15)];
+        let produced = run_mass_batch(high, low, period, &mut output);
+        output.truncate(produced);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        validate_output_slices(&METADATA, outputs, 1)?;
+        ensure_output_len(
+            &METADATA,
+            outputs[0].len(),
+            high.len().saturating_sub(period + 15),
+            0,
+        )?;
+        Ok(run_mass_batch(high, low, period, outputs[0]))
     }
 
     fn create_stream(
@@ -101,6 +125,42 @@ impl IndicatorStream for MassStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_mass_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if high.len() <= period + 15 {
+        return 0;
+    }
+
+    let mut ema1 = EmaState::new(EMA_MULTIPLIER);
+    let mut ema2 = None;
+    let mut ratio_sum = RingSum::new(period);
+    let mut out_index = 0usize;
+
+    for (index, (&high, &low)) in high.iter().zip(low.iter()).enumerate() {
+        let hl = high - low;
+        let ema1_value = ema1.feed(hl);
+
+        if index == 8 {
+            ema2 = Some(ema1_value);
+        }
+
+        if index >= 8 {
+            let previous = ema2.expect("mass batch second EMA should be initialized");
+            let ema2_value = (ema1_value - previous).mul_add(EMA_MULTIPLIER, previous);
+            ema2 = Some(ema2_value);
+
+            if index >= 16 {
+                ratio_sum.push(ema1_value / ema2_value);
+                if ratio_sum.is_full() {
+                    output[out_index] = ratio_sum.sum;
+                    out_index += 1;
+                }
+            }
+        }
+    }
+
+    out_index
 }
 
 fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {

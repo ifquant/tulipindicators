@@ -64,6 +64,15 @@
 - 日志、异常和错误信息不得泄露敏感信息。
 - 生成文件、性能敏感路径和核心指标循环中，避免无理由增加堆分配或隐藏拷贝。
 
+### 指标实现收口规则
+- 稳定指标默认优先采用统一模板：`run()` + `run_in_place()` + 可选 stream，并让 batch 直接走专用 kernel，不要默认复用 `stream.feed()`。
+- batch kernel 命名优先统一成 `run_<indicator>_batch(...)`；如果是多输出指标，优先在一个 kernel 内同时写出多路输出。
+- 只有当 stream 本身就是唯一真实语义来源、且 batch 很难安全展开时，才保留 `run() -> stream.feed()` 旧路径；否则默认视为待收口实现。
+- 递推型指标如果 C 汇编已经出现 `fmadd`，Rust 热循环默认优先检查 `mul_add` 写法是否能生成同形指令。
+- branch-heavy 状态机指标不要为了追求“模板统一”强行引入不自然的 helper；这类指标优先保留可读的状态推进结构，再单独做汇编和 benchmark 分析。
+- 新增或重写指标时，优先把“vector/elementwise、rolling window、smoothing recurrence、branch-heavy state machine、多输出 recurrence”归到已有模式中，不要为单个指标发明新风格。
+- benchmark 默认以 `run_in_place` 为主口径；若某项需要分析 wrapper 税，额外用 kernel split，而不是用 owned `Vec<Vec<Real>>` 路径混淆结论。
+
 ## 应用领域硬约束
 
 ### 数据与一致性

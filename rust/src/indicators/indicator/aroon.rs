@@ -1,5 +1,7 @@
 use crate::core::error::IndicatorError;
-use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{double_input, expect_option_count, parse_usize_option};
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue};
@@ -38,8 +40,39 @@ impl Indicator for Aroon {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = AroonStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low) = double_input(AROON_METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let mut down = vec![0.0; high.len().saturating_sub(period)];
+        let mut up = vec![0.0; high.len().saturating_sub(period)];
+        let produced = run_aroon_batch(high, low, period, &mut down, &mut up);
+        down.truncate(produced);
+        up.truncate(produced);
+        Ok(vec![down, up])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(AROON_METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        validate_output_slices(&AROON_METADATA, outputs, 2)?;
+        ensure_output_len(
+            &AROON_METADATA,
+            outputs[0].len(),
+            high.len().saturating_sub(period),
+            0,
+        )?;
+        ensure_output_len(
+            &AROON_METADATA,
+            outputs[1].len(),
+            high.len().saturating_sub(period),
+            1,
+        )?;
+        let (down_out, up_out) = outputs.split_at_mut(1);
+        Ok(run_aroon_batch(high, low, period, down_out[0], up_out[0]))
     }
 
     fn create_stream(
@@ -60,8 +93,30 @@ impl Indicator for AroonOsc {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = AroonOscStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low) = double_input(AROONOSC_METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        let mut output = vec![0.0; high.len().saturating_sub(period)];
+        let produced = run_aroonosc_batch(high, low, period, &mut output);
+        output.truncate(produced);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low) = double_input(AROONOSC_METADATA.name, inputs)?;
+        let period = parse_period(options)?;
+        validate_output_slices(&AROONOSC_METADATA, outputs, 1)?;
+        ensure_output_len(
+            &AROONOSC_METADATA,
+            outputs[0].len(),
+            high.len().saturating_sub(period),
+            0,
+        )?;
+        Ok(run_aroonosc_batch(high, low, period, outputs[0]))
     }
 
     fn create_stream(
@@ -181,6 +236,66 @@ impl IndicatorStream for AroonOscStream {
 
         Ok(vec![output])
     }
+}
+
+fn run_aroon_batch(
+    high: &[Real],
+    low: &[Real],
+    period: usize,
+    down: &mut [Real],
+    up: &mut [Real],
+) -> usize {
+    if high.len() <= period {
+        return 0;
+    }
+
+    let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
+    let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+    let scale = 100.0 / period as Real;
+    let mut out_index = 0usize;
+
+    for (index, (&high, &low)) in high.iter().zip(low.iter()).enumerate() {
+        max_queue.push(index, high);
+        min_queue.push(index, low);
+
+        if index >= period {
+            let window_start = index - period;
+            max_queue.evict_before(window_start);
+            min_queue.evict_before(window_start);
+            down[out_index] = (period as Real - (index - min_queue.front_index()) as Real) * scale;
+            up[out_index] = (period as Real - (index - max_queue.front_index()) as Real) * scale;
+            out_index += 1;
+        }
+    }
+
+    out_index
+}
+
+fn run_aroonosc_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if high.len() <= period {
+        return 0;
+    }
+
+    let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
+    let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+    let scale = 100.0 / period as Real;
+    let mut out_index = 0usize;
+
+    for (index, (&high, &low)) in high.iter().zip(low.iter()).enumerate() {
+        max_queue.push(index, high);
+        min_queue.push(index, low);
+
+        if index >= period {
+            let window_start = index - period;
+            max_queue.evict_before(window_start);
+            min_queue.evict_before(window_start);
+            output[out_index] =
+                (max_queue.front_index() as Real - min_queue.front_index() as Real) * scale;
+            out_index += 1;
+        }
+    }
+
+    out_index
 }
 
 fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {
