@@ -143,17 +143,16 @@ impl IndicatorStream for KvoStream {
 
                 self.cm += dm;
 
-                let vf = volume
-                    * ((dm / self.cm) * 2.0 - 1.0).abs()
-                    * 100.0
-                    * if self.trend != 0 { 1.0 } else { -1.0 };
+                let vf = signed_volume_force(dm, self.cm, volume, self.trend);
 
                 if self.progress == 1 {
                     self.short_ema = vf;
                     self.long_ema = vf;
                 } else {
-                    self.short_ema = (vf - self.short_ema).mul_add(self.short_per, self.short_ema);
-                    self.long_ema = (vf - self.long_ema).mul_add(self.long_per, self.long_ema);
+                    let short_part = vf * self.short_per;
+                    let long_part = vf * self.long_per;
+                    self.short_ema = self.short_ema.mul_add(1.0 - self.short_per, short_part);
+                    self.long_ema = self.long_ema.mul_add(1.0 - self.long_per, long_part);
                 }
 
                 outputs[0][out_index] = self.short_ema - self.long_ema;
@@ -223,17 +222,16 @@ fn run_kvo_batch(
 
         cm += dm;
 
-        let vf = volume[index]
-            * ((dm / cm) * 2.0 - 1.0).abs()
-            * 100.0
-            * if trend != 0 { 1.0 } else { -1.0 };
+        let vf = signed_volume_force(dm, cm, volume[index], trend);
 
         if index == 1 {
             short_ema = vf;
             long_ema = vf;
         } else {
-            short_ema = (vf - short_ema).mul_add(short_per, short_ema);
-            long_ema = (vf - long_ema).mul_add(long_per, long_ema);
+            let short_part = vf * short_per;
+            let long_part = vf * long_per;
+            short_ema = short_ema.mul_add(1.0 - short_per, short_part);
+            long_ema = long_ema.mul_add(1.0 - long_per, long_part);
         }
 
         output[out_index] = short_ema - long_ema;
@@ -242,4 +240,10 @@ fn run_kvo_batch(
     }
 
     Ok(out_index)
+}
+
+fn signed_volume_force(dm: Real, cm: Real, volume: Real, trend: i32) -> Real {
+    let signal = ((trend != 0) as u8 as Real).mul_add(2.0, -1.0);
+    let magnitude = volume * (dm / cm).mul_add(2.0, -1.0).abs() * 100.0;
+    magnitude * signal
 }
