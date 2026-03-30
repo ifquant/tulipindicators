@@ -496,7 +496,8 @@ impl Indicator for Pvi {
         output.push(pvi);
         for index in 1..close.len() {
             if volume[index] > volume[index - 1] {
-                pvi += ((close[index] - close[index - 1]) / close[index - 1]) * pvi;
+                let ratio = (close[index] - close[index - 1]) / close[index - 1];
+                pvi = ratio.mul_add(pvi, pvi);
             }
             output.push(pvi);
         }
@@ -523,7 +524,8 @@ impl Indicator for Pvi {
         outputs[0][0] = pvi;
         for index in 1..close.len() {
             if volume[index] > volume[index - 1] {
-                pvi += ((close[index] - close[index - 1]) / close[index - 1]) * pvi;
+                let ratio = (close[index] - close[index - 1]) / close[index - 1];
+                pvi = ratio.mul_add(pvi, pvi);
             }
             outputs[0][index] = pvi;
         }
@@ -1067,7 +1069,8 @@ impl IndicatorStream for PviStream {
                 (self.previous_close, self.previous_volume)
             {
                 if volume > previous_volume {
-                    self.pvi += ((close - previous_close) / previous_close) * self.pvi;
+                    let ratio = (close - previous_close) / previous_close;
+                    self.pvi = ratio.mul_add(self.pvi, self.pvi);
                 }
             }
             output.push(self.pvi);
