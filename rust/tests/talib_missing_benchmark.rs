@@ -16,6 +16,7 @@ const INDICATORS: &[&str] = &[
     "ht_sine",
     "ht_trendline",
     "ht_trendmode",
+    "imi",
     "midpoint",
     "midprice",
     "rocr100",
@@ -26,6 +27,7 @@ const INDICATORS: &[&str] = &[
     "beta",
     "correl",
     "macdfix",
+    "sarext",
     "t3",
 ];
 

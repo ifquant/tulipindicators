@@ -2,10 +2,10 @@ use crate::core::indicator::Indicator;
 use crate::indicators::indicator::{
     Ad, AdOsc, Adx, Adxr, Ao, Apo, Aroon, AroonOsc, Atr, Bop, Cci, Cmf, Cmo, Copp, Cvi, Di, Dm,
     Dpo, Dx, Emv, Fi, Fisher, Fosc, HtDcPeriod, HtDcPhase, HtPhasor, HtSine, HtTrendMode,
-    HtTrendline, Kst, Kvo, LinReg, LinRegAngle, LinRegIntercept, LinRegSlope, Macd, MacdExt,
+    HtTrendline, Imi, Kst, Kvo, LinReg, LinRegAngle, LinRegIntercept, LinRegSlope, Macd, MacdExt,
     MacdFix, MarketFi, Mass, Md, Mfi, Mom, Msw, Natr, Nvi, Obv, Pfe, Posc, Ppo, Psar, Pvi, Qstick,
-    Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf, Tsi,
-    UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
+    Rmi, Roc, Rocr, Rocr100, Rsi, Rvi, Sarext, Smi, StdDev, StdErr, Stoch, StochRsi, Tr, Trix, Tsf,
+    Tsi, UltOsc, Var, Vhf, Volatility, Vosc, Wad, WillR,
 };
 use crate::indicators::math::{
     Beta, Correl, CrossAny, Crossover, Decay, EDecay, Lag, Max, MaxIndex, MidPoint, Min, MinIndex,
@@ -76,6 +76,7 @@ pub static HT_PHASOR: HtPhasor = HtPhasor;
 pub static HT_SINE: HtSine = HtSine;
 pub static HT_TRENDLINE: HtTrendline = HtTrendline;
 pub static HT_TRENDMODE: HtTrendMode = HtTrendMode;
+pub static IMI: Imi = Imi;
 pub static IKHTS: Ikhts = Ikhts;
 pub static KAMA: Kama = Kama;
 pub static KC: Kc = Kc;
@@ -128,6 +129,7 @@ pub static RMTA: Rmta = Rmta;
 pub static RSI: Rsi = Rsi;
 pub static RVI: Rvi = Rvi;
 pub static ROUND: Round = Round;
+pub static SAREXT: Sarext = Sarext;
 pub static SMA: Sma = Sma;
 pub static T3: T3Indicator = T3Indicator;
 pub static SIN: Sin = Sin;
@@ -168,7 +170,7 @@ pub static WILLR: WillR = WillR;
 pub static WMA: Wma = Wma;
 pub static ZLEMA: Zlema = Zlema;
 
-pub fn all() -> [&'static dyn Indicator; 146] {
+pub fn all() -> [&'static dyn Indicator; 148] {
     [
         &ABS,
         &ACOS,
@@ -225,6 +227,7 @@ pub fn all() -> [&'static dyn Indicator; 146] {
         &HT_SINE,
         &HT_TRENDLINE,
         &HT_TRENDMODE,
+        &IMI,
         &IKHTS,
         &KAMA,
         &KC,
@@ -277,6 +280,7 @@ pub fn all() -> [&'static dyn Indicator; 146] {
         &RSI,
         &RVI,
         &ROUND,
+        &SAREXT,
         &SIN,
         &SINH,
         &SMA,
@@ -376,6 +380,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "ht_sine" => Some(&HT_SINE),
         "ht_trendline" => Some(&HT_TRENDLINE),
         "ht_trendmode" => Some(&HT_TRENDMODE),
+        "imi" => Some(&IMI),
         "ikhts" => Some(&IKHTS),
         "kama" => Some(&KAMA),
         "kc" => Some(&KC),
@@ -428,6 +433,7 @@ pub fn find(name: &str) -> Option<&'static dyn Indicator> {
         "rsi" => Some(&RSI),
         "rvi" => Some(&RVI),
         "round" => Some(&ROUND),
+        "sarext" => Some(&SAREXT),
         "sma" => Some(&SMA),
         "sin" => Some(&SIN),
         "sinh" => Some(&SINH),

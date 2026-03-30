@@ -161,6 +161,35 @@ fn ht_family_matches_local_talib_default_semantics() {
     assert_matches_talib("ht_trendmode", &[], std::slice::from_ref(&input));
 }
 
+#[test]
+fn final_talib_gap_items_match_local_and_talib_semantics() {
+    assert_case(
+        "imi",
+        &[3.0],
+        &[
+            vec![10.0, 9.0, 8.0, 10.0, 10.0],
+            vec![11.0, 8.0, 10.0, 9.0, 12.0],
+        ],
+        &[vec![75.0, 50.0, 80.0]],
+    );
+    assert_matches_talib(
+        "imi",
+        &[3.0],
+        &[
+            vec![10.0, 9.0, 8.0, 10.0, 10.0],
+            vec![11.0, 8.0, 10.0, 9.0, 12.0],
+        ],
+    );
+    assert_matches_talib(
+        "sarext",
+        &[0.0, 0.0, 0.02, 0.02, 0.2, 0.02, 0.02, 0.2],
+        &[
+            vec![5.0, 6.0, 7.0, 8.0, 7.0, 6.0],
+            vec![1.0, 2.0, 3.0, 4.0, 3.0, 2.0],
+        ],
+    );
+}
+
 fn assert_case(name: &str, options: &[Real], inputs: &[Vec<Real>], expected: &[Vec<Real>]) {
     let indicator = tulipindicators::find(name).expect("indicator should be registered");
     let rust_inputs: Vec<&[Real]> = inputs.iter().map(Vec::as_slice).collect();

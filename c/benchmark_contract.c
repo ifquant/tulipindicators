@@ -259,6 +259,14 @@ static TI_REAL option_value(const char *name, int input_len) {
     if (strcmp(name, "stddev") == 0) return 2.0;
     if (strcmp(name, "acceleration_factor_step") == 0) return 0.02;
     if (strcmp(name, "acceleration_factor_maximum") == 0) return 0.2;
+    if (strcmp(name, "start_value") == 0) return 0.0;
+    if (strcmp(name, "offset_on_reverse") == 0) return 0.0;
+    if (strcmp(name, "acceleration_init_long") == 0) return 0.02;
+    if (strcmp(name, "acceleration_long") == 0) return 0.02;
+    if (strcmp(name, "acceleration_max_long") == 0) return 0.2;
+    if (strcmp(name, "acceleration_init_short") == 0) return 0.02;
+    if (strcmp(name, "acceleration_short") == 0) return 0.02;
+    if (strcmp(name, "acceleration_max_short") == 0) return 0.2;
     if (strcmp(name, "alpha") == 0) return 0.2;
     if (strcmp(name, "beta") == 0) return 0.2;
     if (strcmp(name, "ma_type") == 0) return 0.0;

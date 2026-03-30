@@ -81,6 +81,7 @@ lappend indicators [list overlay "Keltner Channel" kc 3 2 3 {high low close} {pe
 lappend indicators [list overlay "Projection Bands" pbands 3 1 2 {high low close} {period} {pbands_lower pbands_upper} {ref stream beta}]
 lappend indicators [list overlay "Price Channel" pc 2 1 2 {high low} {period} {pc_low pc_high} {stream beta}]
 lappend indicators [list overlay "Parabolic SAR" psar 2 2 1 {high low} {{acceleration_factor_step} {acceleration_factor_maximum}} {psar}]
+lappend indicators [list overlay "Parabolic SAR - Extended" sarext 2 8 1 {high low} {{start_value} {offset_on_reverse} {acceleration_init_long} {acceleration_long} {acceleration_max_long} {acceleration_init_short} {acceleration_short} {acceleration_max_short}} {sarext}]
 
 #Momentum
 lappend indicators [list indicator "Accumulation/Distribution Line" ad 4 0 1 {high low close volume} {} {ad}]
@@ -102,6 +103,7 @@ lappend indicators [list indicator "Klinger Volume Oscillator" kvo 4 2 1 {high l
 lappend indicators [list indicator "Know Sure Thing" kst 1 8 2 {real} {roc1 roc2 roc3 roc4 ma1 ma2 ma3 ma4} {kst kst_signal} {ref beta}]
 lappend indicators [list indicator "Market Facilitation Index" marketfi 3 0 1 {high low volume} {} {marketfi}]
 lappend indicators [list indicator "Mass Index" mass 2 1 1 {high low} {period} {mass}]
+lappend indicators [list indicator "Intraday Momentum Index" imi 2 1 1 {open close} {period} {imi}]
 lappend indicators [list indicator "Money Flow Index" mfi 4 1 1 {high low close volume} {period} {mfi}]
 lappend indicators [list indicator "Moving Average Convergence/Divergence" macd 1 3 3 {real} {{short_period} {long_period} {signal_period}} {macd macd_signal macd_histogram}]
 lappend indicators [list indicator "Moving Average Convergence/Divergence Fix 12/26" macdfix 1 1 3 {real} {signal_period} {macd macd_signal macd_histogram}]

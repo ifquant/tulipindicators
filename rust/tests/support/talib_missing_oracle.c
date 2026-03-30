@@ -87,18 +87,76 @@ int main(int argc, char **argv) {
         return 2;
     }
 
+    int input_cursor = 0;
     for (unsigned int i = 0; i < info->nbInput; ++i) {
         const TA_InputParameterInfo *param = NULL;
         TA_GetInputParameterInfo(handle, i, &param);
         if (param->type == TA_Input_Price) {
-            fprintf(stderr, "price inputs are not supported in this oracle\n");
-            return 2;
+            const double *open = NULL;
+            const double *high = NULL;
+            const double *low = NULL;
+            const double *close = NULL;
+            const double *volume = NULL;
+            const double *open_interest = NULL;
+
+            if (param->flags & TA_IN_PRICE_OPEN) {
+                if (input_cursor >= input_count) {
+                    fprintf(stderr, "missing open input for price bundle %u\n", i);
+                    return 2;
+                }
+                open = inputs[input_cursor++];
+            }
+            if (param->flags & TA_IN_PRICE_HIGH) {
+                if (input_cursor >= input_count) {
+                    fprintf(stderr, "missing high input for price bundle %u\n", i);
+                    return 2;
+                }
+                high = inputs[input_cursor++];
+            }
+            if (param->flags & TA_IN_PRICE_LOW) {
+                if (input_cursor >= input_count) {
+                    fprintf(stderr, "missing low input for price bundle %u\n", i);
+                    return 2;
+                }
+                low = inputs[input_cursor++];
+            }
+            if (param->flags & TA_IN_PRICE_CLOSE) {
+                if (input_cursor >= input_count) {
+                    fprintf(stderr, "missing close input for price bundle %u\n", i);
+                    return 2;
+                }
+                close = inputs[input_cursor++];
+            }
+            if (param->flags & TA_IN_PRICE_VOLUME) {
+                if (input_cursor >= input_count) {
+                    fprintf(stderr, "missing volume input for price bundle %u\n", i);
+                    return 2;
+                }
+                volume = inputs[input_cursor++];
+            }
+            if (param->flags & TA_IN_PRICE_OPENINTEREST) {
+                if (input_cursor >= input_count) {
+                    fprintf(stderr, "missing open interest input for price bundle %u\n", i);
+                    return 2;
+                }
+                open_interest = inputs[input_cursor++];
+            }
+
+            if (TA_SetInputParamPricePtr(holder, i, open, high, low, close, volume, open_interest) != TA_SUCCESS) {
+                fprintf(stderr, "failed to bind price input %u\n", i);
+                return 2;
+            }
+            continue;
         }
         if (param->type != TA_Input_Real) {
             fprintf(stderr, "unsupported ta-lib input type\n");
             return 2;
         }
-        if (TA_SetInputParamRealPtr(holder, i, inputs[i]) != TA_SUCCESS) {
+        if (input_cursor >= input_count) {
+            fprintf(stderr, "missing real input %u\n", i);
+            return 2;
+        }
+        if (TA_SetInputParamRealPtr(holder, i, inputs[input_cursor++]) != TA_SUCCESS) {
             fprintf(stderr, "failed to bind real input %u\n", i);
             return 2;
         }
