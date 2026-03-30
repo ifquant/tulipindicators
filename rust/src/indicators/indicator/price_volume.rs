@@ -170,8 +170,46 @@ impl Indicator for AdOsc {
     }
 
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        let mut stream = AdOscStream::new(options)?;
-        stream.feed(inputs)
+        let (high, low, close, volume) = quadruple_input(ADOSC_METADATA.name, inputs)?;
+        let (short_period, long_period) = parse_short_long(ADOSC_METADATA.name, options)?;
+        let mut output = vec![0.0; high.len().saturating_sub(long_period - 1)];
+        let produced = run_adosc_batch(
+            high,
+            low,
+            close,
+            volume,
+            short_period,
+            long_period,
+            &mut output,
+        );
+        output.truncate(produced);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let (high, low, close, volume) = quadruple_input(ADOSC_METADATA.name, inputs)?;
+        let (short_period, long_period) = parse_short_long(ADOSC_METADATA.name, options)?;
+        validate_output_slices(&ADOSC_METADATA, outputs, 1)?;
+        ensure_output_len(
+            &ADOSC_METADATA,
+            outputs[0].len(),
+            high.len().saturating_sub(long_period - 1),
+            0,
+        )?;
+        Ok(run_adosc_batch(
+            high,
+            low,
+            close,
+            volume,
+            short_period,
+            long_period,
+            outputs[0],
+        ))
     }
 
     fn create_stream(
@@ -778,6 +816,49 @@ fn run_ad_batch(
     }
 
     Ok(high.len())
+}
+
+fn run_adosc_batch(
+    high: &[Real],
+    low: &[Real],
+    close: &[Real],
+    volume: &[Real],
+    short_period: usize,
+    long_period: usize,
+    output: &mut [Real],
+) -> usize {
+    if high.len() < long_period {
+        return 0;
+    }
+
+    let short_per = 2.0 / (short_period as Real + 1.0);
+    let long_per = 2.0 / (long_period as Real + 1.0);
+    let mut sum = 0.0;
+    let mut short_ema = 0.0;
+    let mut long_ema = 0.0;
+    let mut out_index = 0usize;
+
+    for index in 0..high.len() {
+        let hl = high[index] - low[index];
+        if hl != 0.0 {
+            sum += (close[index] - low[index] - high[index] + close[index]) / hl * volume[index];
+        }
+
+        if index == 0 {
+            short_ema = sum;
+            long_ema = sum;
+        } else {
+            short_ema = (sum - short_ema).mul_add(short_per, short_ema);
+            long_ema = (sum - long_ema).mul_add(long_per, long_ema);
+        }
+
+        if index + 1 >= long_period {
+            output[out_index] = short_ema - long_ema;
+            out_index += 1;
+        }
+    }
+
+    out_index
 }
 
 struct BopStream {
