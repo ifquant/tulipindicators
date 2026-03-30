@@ -273,8 +273,8 @@ static TI_REAL option_value(const char *name, int input_len) {
     if (strcmp(name, "fast_ma_type") == 0) return 1.0;
     if (strcmp(name, "slow_ma_type") == 0) return 1.0;
     if (strcmp(name, "signal_ma_type") == 0) return 1.0;
-    if (strcmp(name, "fastlimit") == 0) return 0.5;
-    if (strcmp(name, "slowlimit") == 0) return 0.05;
+    if (strcmp(name, "fastlimit") == 0 || strcmp(name, "fast limit") == 0) return 0.5;
+    if (strcmp(name, "slowlimit") == 0 || strcmp(name, "slow limit") == 0) return 0.05;
     if (strcmp(name, "offset") == 0) return 0.85;
     if (strcmp(name, "sigma") == 0) return 6.0;
     if (strcmp(name, "vfactor") == 0) return 0.7;
