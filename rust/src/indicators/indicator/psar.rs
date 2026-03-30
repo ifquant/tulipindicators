@@ -54,8 +54,9 @@ struct PsarState {
     accel: Real,
     prev_high: Real,
     prev_low: Real,
-    prev2_high: Option<Real>,
-    prev2_low: Option<Real>,
+    prev2_high: Real,
+    prev2_low: Real,
+    has_prev2: bool,
 }
 
 impl PsarStream {
@@ -100,8 +101,9 @@ impl IndicatorStream for PsarStream {
                         accel: self.accel_step,
                         prev_high: first_high,
                         prev_low: first_low,
-                        prev2_high: None,
-                        prev2_low: None,
+                        prev2_high: 0.0,
+                        prev2_low: 0.0,
+                        has_prev2: false,
                     };
                     output.push(state.advance(high, low, self.accel_step, self.accel_max));
                     self.state = Some(state);
@@ -123,40 +125,12 @@ impl IndicatorStream for PsarStream {
 
 impl PsarState {
     fn advance(&mut self, high: Real, low: Real, accel_step: Real, accel_max: Real) -> Real {
-        self.sar = (self.extreme - self.sar) * self.accel + self.sar;
+        self.sar = (self.extreme - self.sar).mul_add(self.accel, self.sar);
 
         if self.long {
-            if let Some(prev2_low) = self.prev2_low {
-                if self.sar > prev2_low {
-                    self.sar = prev2_low;
-                }
-            }
-            if self.sar > self.prev_low {
-                self.sar = self.prev_low;
-            }
-
-            if self.accel < accel_max && high > self.extreme {
-                self.accel = (self.accel + accel_step).min(accel_max);
-            }
-            if high > self.extreme {
-                self.extreme = high;
-            }
+            self.advance_long(high, accel_step, accel_max);
         } else {
-            if let Some(prev2_high) = self.prev2_high {
-                if self.sar < prev2_high {
-                    self.sar = prev2_high;
-                }
-            }
-            if self.sar < self.prev_high {
-                self.sar = self.prev_high;
-            }
-
-            if self.accel < accel_max && low < self.extreme {
-                self.accel = (self.accel + accel_step).min(accel_max);
-            }
-            if low < self.extreme {
-                self.extreme = low;
-            }
+            self.advance_short(low, accel_step, accel_max);
         }
 
         if (self.long && low < self.sar) || (!self.long && high > self.sar) {
@@ -167,11 +141,40 @@ impl PsarState {
         }
 
         let output = self.sar;
-        self.prev2_high = Some(self.prev_high);
-        self.prev2_low = Some(self.prev_low);
+        self.prev2_high = self.prev_high;
+        self.prev2_low = self.prev_low;
+        self.has_prev2 = true;
         self.prev_high = high;
         self.prev_low = low;
         output
+    }
+
+    fn advance_long(&mut self, high: Real, accel_step: Real, accel_max: Real) {
+        if self.has_prev2 {
+            self.sar = self.sar.min(self.prev2_low);
+        }
+        self.sar = self.sar.min(self.prev_low);
+
+        if high > self.extreme {
+            if self.accel < accel_max {
+                self.accel = (self.accel + accel_step).min(accel_max);
+            }
+            self.extreme = high;
+        }
+    }
+
+    fn advance_short(&mut self, low: Real, accel_step: Real, accel_max: Real) {
+        if self.has_prev2 {
+            self.sar = self.sar.max(self.prev2_high);
+        }
+        self.sar = self.sar.max(self.prev_high);
+
+        if low < self.extreme {
+            if self.accel < accel_max {
+                self.accel = (self.accel + accel_step).min(accel_max);
+            }
+            self.extreme = low;
+        }
     }
 }
 
