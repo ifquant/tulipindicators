@@ -97,19 +97,25 @@ fn run_dm_batch(
 
     plus[0] = dmup;
     minus[0] = dmdown;
-    let mut out_index = 1usize;
 
-    for index in period..high.len() {
-        let (dp, dm) =
-            directional_movement(high[index - 1], high[index], low[index - 1], low[index]);
-        dmup = dmup * per + dp;
-        dmdown = dmdown * per + dm;
-        plus[out_index] = dmup;
-        minus[out_index] = dmdown;
-        out_index += 1;
+    let mut previous_high = high[period - 1];
+    let mut previous_low = low[period - 1];
+
+    for ((&high_value, &low_value), (plus_out, minus_out)) in high[period..]
+        .iter()
+        .zip(&low[period..])
+        .zip(plus[1..].iter_mut().zip(minus[1..].iter_mut()))
+    {
+        let (dp, dm) = directional_movement(previous_high, high_value, previous_low, low_value);
+        dmup = dmup.mul_add(per, dp);
+        dmdown = dmdown.mul_add(per, dm);
+        *plus_out = dmup;
+        *minus_out = dmdown;
+        previous_high = high_value;
+        previous_low = low_value;
     }
 
-    out_index
+    plus.len()
 }
 
 fn directional_movement(
