@@ -375,18 +375,9 @@ impl Indicator for Fosc {
             return Ok(vec![Vec::new()]);
         }
 
-        let mut regression = vec![0.0; input.len().saturating_sub(period - 1)];
-        let regression_len = run_regression_batch(
-            input,
-            period,
-            RegressionProjection::ValueAt(period as Real + 1.0),
-            &mut regression,
-        );
-        let mut output = Vec::with_capacity(regression_len.saturating_sub(1));
-        for index in 1..regression_len {
-            let sample = input[period - 1 + index];
-            output.push(100.0 * (sample - regression[index - 1]) / sample);
-        }
+        let mut output = vec![0.0; input.len() - period];
+        let written = run_fosc_batch(input, period, &mut output);
+        debug_assert_eq!(written, output.len());
         Ok(vec![output])
     }
 
@@ -405,20 +396,7 @@ impl Indicator for Fosc {
             return Ok(0);
         }
 
-        let mut regression = vec![0.0; input.len().saturating_sub(period - 1)];
-        let regression_len = run_regression_batch(
-            input,
-            period,
-            RegressionProjection::ValueAt(period as Real + 1.0),
-            &mut regression,
-        );
-        let mut out_index = 0usize;
-        for index in 1..regression_len {
-            let sample = input[period - 1 + index];
-            outputs[0][out_index] = 100.0 * (sample - regression[index - 1]) / sample;
-            out_index += 1;
-        }
-        Ok(out_index)
+        Ok(run_fosc_batch(input, period, &mut outputs[0][..output_len]))
     }
 
     fn create_stream(
@@ -427,6 +405,47 @@ impl Indicator for Fosc {
     ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
         Ok(Some(Box::new(FoscStream::new(options)?)))
     }
+}
+
+fn run_fosc_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() <= period {
+        return 0;
+    }
+
+    let period_real = period as Real;
+    let mut x_sum = 0.0;
+    let mut x2_sum = 0.0;
+    let mut y_sum = 0.0;
+    let mut xy_sum = 0.0;
+
+    for (index, &sample) in input.iter().enumerate().take(period) {
+        let x = (index + 1) as Real;
+        x_sum += x;
+        x2_sum += x * x;
+        y_sum += sample;
+        xy_sum += sample * x;
+    }
+
+    let inv_denom = 1.0 / (period_real * x2_sum - x_sum * x_sum);
+    let inv_period = 1.0 / period_real;
+
+    let mut slope = (period_real * xy_sum - x_sum * y_sum) * inv_denom;
+    let mut intercept0 = (y_sum - slope * x_sum) * inv_period;
+    let mut tsf = intercept0 + slope * (period_real + 1.0);
+
+    for (dst, index) in output.iter_mut().zip(period..input.len()) {
+        let sample = input[index];
+        *dst = 100.0 * (sample - tsf) / sample;
+
+        xy_sum = xy_sum - y_sum + sample * period_real;
+        y_sum = y_sum - input[index - period] + sample;
+
+        slope = (period_real * xy_sum - x_sum * y_sum) * inv_denom;
+        intercept0 = (y_sum - slope * x_sum) * inv_period;
+        tsf = intercept0 + slope * (period_real + 1.0);
+    }
+
+    output.len()
 }
 
 enum RegressionProjection {
