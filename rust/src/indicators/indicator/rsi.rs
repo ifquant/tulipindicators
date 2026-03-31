@@ -4,6 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "rsi",
@@ -16,6 +17,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rsi;
+
+impl Rsi {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<RsiState, IndicatorError> {
+        RsiState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Rsi {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -75,6 +82,43 @@ impl RsiStream {
             smooth_down: 0.0,
         })
     }
+
+    fn update_one(&mut self, sample: Real) -> Option<Real> {
+        let per = 1.0 / self.period as Real;
+        match self.last_input {
+            None => {
+                self.last_input = Some(sample);
+                self.progress += 1;
+                None
+            }
+            Some(previous) => {
+                let delta = sample - previous;
+                let upward = delta.max(0.0);
+                let downward = (-delta).max(0.0);
+
+                let output = if self.progress <= self.period {
+                    self.smooth_up += upward;
+                    self.smooth_down += downward;
+
+                    if self.progress == self.period {
+                        self.smooth_up /= self.period as Real;
+                        self.smooth_down /= self.period as Real;
+                        Some(rsi_value(self.smooth_up, self.smooth_down))
+                    } else {
+                        None
+                    }
+                } else {
+                    self.smooth_up = (upward - self.smooth_up).mul_add(per, self.smooth_up);
+                    self.smooth_down = (downward - self.smooth_down).mul_add(per, self.smooth_down);
+                    Some(rsi_value(self.smooth_up, self.smooth_down))
+                };
+
+                self.last_input = Some(sample);
+                self.progress += 1;
+                output
+            }
+        }
+    }
 }
 
 impl IndicatorStream for RsiStream {
@@ -89,39 +133,10 @@ impl IndicatorStream for RsiStream {
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
         let mut output = Vec::new();
-        let per = 1.0 / self.period as Real;
 
-        for sample in input {
-            match self.last_input {
-                None => {
-                    self.last_input = Some(*sample);
-                    self.progress += 1;
-                    continue;
-                }
-                Some(previous) => {
-                    let delta = *sample - previous;
-                    let upward = delta.max(0.0);
-                    let downward = (-delta).max(0.0);
-
-                    if self.progress <= self.period {
-                        self.smooth_up += upward;
-                        self.smooth_down += downward;
-
-                        if self.progress == self.period {
-                            self.smooth_up /= self.period as Real;
-                            self.smooth_down /= self.period as Real;
-                            output.push(rsi_value(self.smooth_up, self.smooth_down));
-                        }
-                    } else {
-                        self.smooth_up = (upward - self.smooth_up).mul_add(per, self.smooth_up);
-                        self.smooth_down =
-                            (downward - self.smooth_down).mul_add(per, self.smooth_down);
-                        output.push(rsi_value(self.smooth_up, self.smooth_down));
-                    }
-
-                    self.last_input = Some(*sample);
-                    self.progress += 1;
-                }
+        for &sample in input {
+            if let Some(value) = self.update_one(sample) {
+                output.push(value);
             }
         }
 
@@ -143,44 +158,82 @@ impl IndicatorStream for RsiStream {
         )?;
 
         let mut out_index = 0usize;
-        let per = 1.0 / self.period as Real;
-
         for &sample in input {
-            match self.last_input {
-                None => {
-                    self.last_input = Some(sample);
-                    self.progress += 1;
-                    continue;
-                }
-                Some(previous) => {
-                    let delta = sample - previous;
-                    let upward = delta.max(0.0);
-                    let downward = (-delta).max(0.0);
-
-                    if self.progress <= self.period {
-                        self.smooth_up += upward;
-                        self.smooth_down += downward;
-
-                        if self.progress == self.period {
-                            self.smooth_up /= self.period as Real;
-                            self.smooth_down /= self.period as Real;
-                            outputs[0][out_index] = rsi_value(self.smooth_up, self.smooth_down);
-                            out_index += 1;
-                        }
-                    } else {
-                        self.smooth_up = (upward - self.smooth_up) * per + self.smooth_up;
-                        self.smooth_down = (downward - self.smooth_down) * per + self.smooth_down;
-                        outputs[0][out_index] = rsi_value(self.smooth_up, self.smooth_down);
-                        out_index += 1;
-                    }
-
-                    self.last_input = Some(sample);
-                    self.progress += 1;
-                }
+            if let Some(value) = self.update_one(sample) {
+                outputs[0][out_index] = value;
+                out_index += 1;
             }
         }
 
         Ok(out_index)
+    }
+}
+
+pub struct RsiState {
+    period: usize,
+    stream: RsiStream,
+    history: RingHistory<Real>,
+}
+
+impl RsiState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let period = parse_period(options)?;
+        Ok(Self {
+            period,
+            stream: RsiStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for RsiState {
+    type Input = Real;
+    type Output = Real;
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &sample in input {
+            if let Some(value) = self.update(sample) {
+                produced += 1;
+                let _ = value;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let output = self.stream.update_one(input);
+        if let Some(value) = output {
+            self.history.push(value);
+        }
+        output
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = RsiStream {
+            period: self.period,
+            progress: 0,
+            last_input: None,
+            smooth_up: 0.0,
+            smooth_down: 0.0,
+        };
+        self.history.clear();
     }
 }
 

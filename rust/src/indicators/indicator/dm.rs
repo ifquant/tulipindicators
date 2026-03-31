@@ -5,6 +5,7 @@ use crate::core::indicator::{
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{double_input, expect_option_count, parse_usize_option};
 use crate::indicators::shared::DirectionalMovementState;
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "dm",
@@ -17,6 +18,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Dm;
+
+impl Dm {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<DmState, IndicatorError> {
+        DmState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Dm {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -170,6 +177,12 @@ impl DmStream {
             state: DirectionalMovementState::new(parse_period(options)?),
         })
     }
+
+    fn update_one(&mut self, high: Real, low: Real) -> Option<(Real, Real)> {
+        let output = self.state.feed(high, low);
+        self.progress += 1;
+        output
+    }
 }
 
 impl IndicatorStream for DmStream {
@@ -187,14 +200,77 @@ impl IndicatorStream for DmStream {
         let mut minus = Vec::new();
 
         for (&high_value, &low_value) in high.iter().zip(low.iter()) {
-            if let Some((up, down)) = self.state.feed(high_value, low_value) {
+            if let Some((up, down)) = self.update_one(high_value, low_value) {
                 plus.push(up);
                 minus.push(down);
             }
-            self.progress += 1;
         }
 
         Ok(vec![plus, minus])
+    }
+}
+
+pub struct DmState {
+    period: usize,
+    stream: DmStream,
+    history: RingHistory<(Real, Real)>,
+}
+
+impl DmState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let period = parse_period(options)?;
+        Ok(Self {
+            period,
+            stream: DmStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for DmState {
+    type Input = (Real, Real);
+    type Output = (Real, Real);
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &(high, low) in input {
+            if self.update((high, low)).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let output = self.stream.update_one(input.0, input.1);
+        if let Some(value) = output {
+            self.history.push(value);
+        }
+        output
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = DmStream {
+            progress: 0,
+            state: DirectionalMovementState::new(self.period),
+        };
+        self.history.clear();
     }
 }
 
