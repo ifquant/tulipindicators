@@ -20,4 +20,4 @@ pub use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 pub use crate::core::types::{IndicatorCategory, Real};
 pub use crate::indicators::indicator::{Dm, DmState, Rsi, RsiState};
 pub use crate::registry::{all, find, ATR, BBANDS, DEMA, EMA, MACD, RSI, SMA, STOCH, TEMA, TRIX};
-pub use crate::state::IndicatorState;
+pub use crate::state::{DynamicIndicatorState, IndicatorState};
