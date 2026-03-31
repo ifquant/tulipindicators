@@ -420,11 +420,7 @@ impl Indicator for Floor {
         Ok(0)
     }
 
-    fn run(
-        &self,
-        inputs: &[&[Real]],
-        options: &[Real],
-    ) -> Result<Vec<Vec<Real>>, IndicatorError> {
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
         expect_option_count(FLOOR_METADATA.name, options, 0)?;
         let input = single_input(FLOOR_METADATA.name, inputs)?;
         let mut output = vec![0.0; input.len()];

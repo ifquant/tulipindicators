@@ -49,7 +49,12 @@ impl Indicator for Dx {
         let output_len = high.len().saturating_sub(period.saturating_sub(1));
         validate_output_slices(&METADATA, outputs, 1)?;
         ensure_output_len(&METADATA, outputs[0].len(), output_len, 0)?;
-        Ok(run_dx_batch(high, low, period, &mut outputs[0][..output_len]))
+        Ok(run_dx_batch(
+            high,
+            low,
+            period,
+            &mut outputs[0][..output_len],
+        ))
     }
 
     fn create_stream(
@@ -112,13 +117,12 @@ fn run_dx_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real])
     let mut down = 0.0;
 
     for index in 1..period {
-        let (current_up, current_down) =
-            crate::indicators::shared::directional_movement(
-                high[index - 1],
-                high[index],
-                low[index - 1],
-                low[index],
-            );
+        let (current_up, current_down) = crate::indicators::shared::directional_movement(
+            high[index - 1],
+            high[index],
+            low[index - 1],
+            low[index],
+        );
         up += current_up;
         down += current_down;
     }

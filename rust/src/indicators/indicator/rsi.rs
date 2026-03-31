@@ -135,7 +135,12 @@ impl IndicatorStream for RsiStream {
     ) -> Result<usize, IndicatorError> {
         let input = single_input(METADATA.name, inputs)?;
         validate_output_slices(&METADATA, outputs, 1)?;
-        ensure_output_len(&METADATA, outputs[0].len(), input.len().saturating_sub(1), 0)?;
+        ensure_output_len(
+            &METADATA,
+            outputs[0].len(),
+            input.len().saturating_sub(1),
+            0,
+        )?;
 
         let mut out_index = 0usize;
         let per = 1.0 / self.period as Real;
