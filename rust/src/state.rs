@@ -24,6 +24,21 @@ pub trait IndicatorState {
     }
 }
 
+pub trait IndicatorStateFactory: Indicator {
+    fn dynamic_state(
+        &'static self,
+        options: &[Real],
+        history_capacity: usize,
+    ) -> Result<DynamicIndicatorState, IndicatorError>
+    where
+        Self: Sized,
+    {
+        DynamicIndicatorState::new(self, options, history_capacity)
+    }
+}
+
+impl<T: Indicator + ?Sized> IndicatorStateFactory for T {}
+
 #[derive(Debug, Clone)]
 pub(crate) struct RingHistory<T: Clone> {
     buf: Vec<T>,

@@ -1,4 +1,7 @@
-use tulipindicators::{registry, Dm, DynamicIndicatorState, Indicator, IndicatorState, Real, Rsi};
+use tulipindicators::{
+    registry, Dm, DynamicIndicatorState, Indicator, IndicatorState, IndicatorStateFactory, Real,
+    Rsi,
+};
 
 const EPSILON: Real = 1e-12;
 
@@ -258,4 +261,19 @@ fn dynamic_state_falls_back_to_batch_for_ma() {
     state.reset();
     assert_eq!(state.len(), 0);
     assert!(!state.is_ready());
+}
+
+#[test]
+fn indicator_state_factory_creates_dynamic_states() {
+    let input = close_series();
+    let options = [14.0];
+    let batch = Rsi.run(&[&input], &options).expect("rsi batch");
+    let expected = batch[0].last().copied();
+
+    let mut state = Rsi
+        .dynamic_state(&options, batch[0].len())
+        .expect("factory dynamic state");
+    let produced = state.seed_columns(&[&input]).expect("factory seed");
+    assert_eq!(produced, batch[0].len());
+    assert_option_real_eq(state.latest().map(|values| values[0]), expected);
 }
