@@ -450,7 +450,7 @@ fn run_short_ht_batch(
     let mut ji = HilbertHistory::new();
     let mut jq = HilbertHistory::new();
     let mut period = 0.0;
-    let mut smooth_period = 0.0;
+    let mut smooth_period: Real = 0.0;
     let mut prev_q2 = 0.0;
     let mut prev_i2 = 0.0;
     let mut re = 0.0;
@@ -530,7 +530,7 @@ fn run_short_ht_batch(
         period = 0.2 * period + 0.8 * previous_period;
 
         if matches!(kind, ShortHtKind::DcPeriod) {
-            smooth_period = 0.33 * period + 0.67 * smooth_period;
+            smooth_period = smooth_period.mul_add(0.67 as Real, (0.33 as Real) * period);
             if today >= start_idx {
                 output0[out_idx] = smooth_period;
                 out_idx += 1;
