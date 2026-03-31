@@ -49,6 +49,26 @@ impl Indicator for Dm {
         options: &[Real],
         outputs: &mut [&mut [Real]],
     ) -> Result<usize, IndicatorError> {
+        if inputs.len() == 2 && outputs.len() == 2 {
+            let high = inputs[0];
+            let low = inputs[1];
+            if high.len() == low.len() {
+                if let Ok(period) = parse_period(options) {
+                    let output_len = high.len().saturating_sub(period.saturating_sub(1));
+                    if outputs[0].len() >= output_len && outputs[1].len() >= output_len {
+                        let (plus_outputs, minus_outputs) = outputs.split_at_mut(1);
+                        return Ok(run_dm_batch(
+                            high,
+                            low,
+                            period,
+                            &mut plus_outputs[0][..output_len],
+                            &mut minus_outputs[0][..output_len],
+                        ));
+                    }
+                }
+            }
+        }
+
         let (high, low) = double_input(METADATA.name, inputs)?;
         let period = parse_period(options)?;
         let output_len = high.len().saturating_sub(period.saturating_sub(1));
@@ -98,21 +118,24 @@ fn run_dm_batch(
     plus[0] = dmup;
     minus[0] = dmdown;
 
-    let mut previous_high = high[period - 1];
-    let mut previous_low = low[period - 1];
+    let previous_high = &high[period - 1..high.len() - 1];
+    let current_high = &high[period..];
+    let previous_low = &low[period - 1..low.len() - 1];
+    let current_low = &low[period..];
 
-    for ((&high_value, &low_value), (plus_out, minus_out)) in high[period..]
-        .iter()
-        .zip(&low[period..])
-        .zip(plus[1..].iter_mut().zip(minus[1..].iter_mut()))
+    for ((((&previous_high, &high_value), &previous_low), &low_value), (plus_out, minus_out)) in
+        previous_high
+            .iter()
+            .zip(current_high.iter())
+            .zip(previous_low.iter())
+            .zip(current_low.iter())
+            .zip(plus[1..].iter_mut().zip(minus[1..].iter_mut()))
     {
         let (dp, dm) = directional_movement(previous_high, high_value, previous_low, low_value);
         dmup = dmup.mul_add(per, dp);
         dmdown = dmdown.mul_add(per, dm);
         *plus_out = dmup;
         *minus_out = dmdown;
-        previous_high = high_value;
-        previous_low = low_value;
     }
 
     plus.len()
