@@ -778,6 +778,13 @@ fn run_ht_trendline_batch(input: &[Real], output: &mut [Real]) -> usize {
     let end_idx = input.len() - 1;
     let temp_real = Real::atan(1.0);
     let rad2deg = 45.0 / temp_real;
+    let mut prefix_sum = Vec::with_capacity(input.len() + 1);
+    prefix_sum.push(0.0);
+    let mut running_sum = 0.0;
+    for &value in input {
+        running_sum += value;
+        prefix_sum.push(running_sum);
+    }
 
     let (mut price_wma, mut today) = PriceWmaState::initialize(input, start_idx, LONG_LOOKBACK);
     for _ in 0..34 {
@@ -861,15 +868,13 @@ fn run_ht_trendline_batch(input: &[Real], output: &mut [Real]) -> usize {
         smooth_period = 0.33 * period + 0.67 * smooth_period;
 
         let dc_period_int = (smooth_period + 0.5) as usize;
-        let mut average = 0.0;
-        let mut idx = today;
-        for _ in 0..dc_period_int {
-            average += input[idx];
-            idx -= 1;
-        }
-        if dc_period_int > 0 {
-            average /= dc_period_int as Real;
-        }
+        let average = if dc_period_int > 0 {
+            let end = today + 1;
+            let start = end - dc_period_int;
+            (prefix_sum[end] - prefix_sum[start]) / dc_period_int as Real
+        } else {
+            0.0
+        };
 
         let trendline = (4.0 * average + 3.0 * i_trend1 + 2.0 * i_trend2 + i_trend3) / 10.0;
         i_trend3 = i_trend2;
