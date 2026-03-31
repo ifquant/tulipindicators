@@ -180,7 +180,6 @@ enum ShortHtKind {
 enum LongHtKind {
     DcPhase,
     Sine,
-    Trendline,
     TrendMode,
 }
 
@@ -367,7 +366,7 @@ impl Indicator for HtTrendline {
         let input = single_input(HT_TRENDLINE_METADATA.name, inputs)?;
         expect_option_count(HT_TRENDLINE_METADATA.name, options, 0)?;
         let mut output = vec![0.0; input.len().saturating_sub(LONG_LOOKBACK)];
-        let produced = run_long_ht_batch(input, LongHtKind::Trendline, &mut output, None);
+        let produced = run_ht_trendline_batch(input, &mut output);
         debug_assert_eq!(produced, output.len());
         Ok(vec![output])
     }
@@ -383,12 +382,7 @@ impl Indicator for HtTrendline {
         let output_len = input.len().saturating_sub(LONG_LOOKBACK);
         validate_output_slices(&HT_TRENDLINE_METADATA, outputs, 1)?;
         ensure_output_len(&HT_TRENDLINE_METADATA, outputs[0].len(), output_len, 0)?;
-        Ok(run_long_ht_batch(
-            input,
-            LongHtKind::Trendline,
-            &mut outputs[0][..output_len],
-            None,
-        ))
+        Ok(run_ht_trendline_batch(input, &mut outputs[0][..output_len]))
     }
 }
 
@@ -703,7 +697,7 @@ fn run_long_ht_batch(
         }
 
         let mut trendline = 0.0;
-        if matches!(kind, LongHtKind::Trendline | LongHtKind::TrendMode) {
+        if matches!(kind, LongHtKind::TrendMode) {
             let mut mean = 0.0;
             let mut idx = today as isize;
             for _ in 0..dc_period_int {
@@ -729,10 +723,6 @@ fn run_long_ht_batch(
                     output0[out_idx] = (dc_phase * deg2rad).sin();
                     output1.as_deref_mut().expect("sine output")[out_idx] =
                         ((dc_phase + 45.0) * deg2rad).sin();
-                    out_idx += 1;
-                }
-                LongHtKind::Trendline => {
-                    output0[out_idx] = trendline;
                     out_idx += 1;
                 }
                 LongHtKind::TrendMode => {
@@ -773,6 +763,124 @@ fn run_long_ht_batch(
         }
 
         smooth_price_idx = (smooth_price_idx + 1) % SMOOTH_PRICE_SIZE;
+        today += 1;
+    }
+
+    out_idx
+}
+
+fn run_ht_trendline_batch(input: &[Real], output: &mut [Real]) -> usize {
+    if input.len() <= LONG_LOOKBACK {
+        return 0;
+    }
+
+    let start_idx = LONG_LOOKBACK;
+    let end_idx = input.len() - 1;
+    let temp_real = Real::atan(1.0);
+    let rad2deg = 45.0 / temp_real;
+
+    let (mut price_wma, mut today) = PriceWmaState::initialize(input, start_idx, LONG_LOOKBACK);
+    for _ in 0..34 {
+        let _ = price_wma.step(input, input[today]);
+        today += 1;
+    }
+
+    let mut hilbert_idx = 0usize;
+    let mut detrender = HilbertHistory::new();
+    let mut q1 = HilbertHistory::new();
+    let mut ji = HilbertHistory::new();
+    let mut jq = HilbertHistory::new();
+    let mut period = 0.0;
+    let mut smooth_period = 0.0;
+    let mut prev_q2 = 0.0;
+    let mut prev_i2 = 0.0;
+    let mut re = 0.0;
+    let mut im = 0.0;
+    let mut i1_odd_prev2 = 0.0;
+    let mut i1_odd_prev3 = 0.0;
+    let mut i1_even_prev2 = 0.0;
+    let mut i1_even_prev3 = 0.0;
+    let mut i_trend1 = 0.0;
+    let mut i_trend2 = 0.0;
+    let mut i_trend3 = 0.0;
+    let mut out_idx = 0usize;
+
+    while today <= end_idx {
+        let adjusted_prev_period = 0.075 * period + 0.54;
+        let smoothed = price_wma.step(input, input[today]);
+        let odd_bar = (today % 2) != 0;
+
+        if !odd_bar {
+            let detrender_value =
+                detrender.step(false, hilbert_idx, smoothed, adjusted_prev_period);
+            let q1_value = q1.step(false, hilbert_idx, detrender_value, adjusted_prev_period);
+            let ji_value = ji.step(false, hilbert_idx, i1_even_prev3, adjusted_prev_period);
+            let jq_value = jq.step(false, hilbert_idx, q1_value, adjusted_prev_period);
+            hilbert_idx = (hilbert_idx + 1) % 3;
+
+            let q2 = 0.2 * (q1_value + ji_value) + 0.8 * prev_q2;
+            let i2 = 0.2 * (i1_even_prev3 - jq_value) + 0.8 * prev_i2;
+
+            i1_odd_prev3 = i1_odd_prev2;
+            i1_odd_prev2 = detrender_value;
+            re = 0.2 * ((i2 * prev_i2) + (q2 * prev_q2)) + 0.8 * re;
+            im = 0.2 * ((i2 * prev_q2) - (q2 * prev_i2)) + 0.8 * im;
+            prev_q2 = q2;
+            prev_i2 = i2;
+        } else {
+            let detrender_value = detrender.step(true, hilbert_idx, smoothed, adjusted_prev_period);
+            let q1_value = q1.step(true, hilbert_idx, detrender_value, adjusted_prev_period);
+            let ji_value = ji.step(true, hilbert_idx, i1_odd_prev3, adjusted_prev_period);
+            let jq_value = jq.step(true, hilbert_idx, q1_value, adjusted_prev_period);
+
+            let q2 = 0.2 * (q1_value + ji_value) + 0.8 * prev_q2;
+            let i2 = 0.2 * (i1_odd_prev3 - jq_value) + 0.8 * prev_i2;
+
+            i1_even_prev3 = i1_even_prev2;
+            i1_even_prev2 = detrender_value;
+            re = 0.2 * ((i2 * prev_i2) + (q2 * prev_q2)) + 0.8 * re;
+            im = 0.2 * ((i2 * prev_q2) - (q2 * prev_i2)) + 0.8 * im;
+            prev_q2 = q2;
+            prev_i2 = i2;
+        }
+
+        let previous_period = period;
+        if im != 0.0 && re != 0.0 {
+            period = 360.0 / (Real::atan(im / re) * rad2deg);
+        }
+        let upper = 1.5 * previous_period;
+        if period > upper {
+            period = upper;
+        }
+        let lower = 0.67 * previous_period;
+        if period < lower {
+            period = lower;
+        }
+        period = period.clamp(6.0, 50.0);
+        period = 0.2 * period + 0.8 * previous_period;
+        smooth_period = 0.33 * period + 0.67 * smooth_period;
+
+        let dc_period_int = (smooth_period + 0.5) as usize;
+        let mut average = 0.0;
+        let mut idx = today;
+        for _ in 0..dc_period_int {
+            average += input[idx];
+            idx -= 1;
+        }
+        if dc_period_int > 0 {
+            average /= dc_period_int as Real;
+        }
+
+        let trendline = (4.0 * average + 3.0 * i_trend1 + 2.0 * i_trend2 + i_trend3) / 10.0;
+        i_trend3 = i_trend2;
+        i_trend2 = i_trend1;
+        i_trend1 = average;
+
+        if today >= start_idx {
+            output[out_idx] = trendline;
+            out_idx += 1;
+        }
+
         today += 1;
     }
 
