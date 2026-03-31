@@ -265,6 +265,26 @@ impl Indicator for AvgPrice {
         outputs: &mut [&mut [Real]],
     ) -> Result<usize, IndicatorError> {
         expect_option_count(AVGPRICE_METADATA.name, options, 0)?;
+        if inputs.len() == 4 && outputs.len() == 1 {
+            let open = inputs[0];
+            let high = inputs[1];
+            let low = inputs[2];
+            let close = inputs[3];
+            let len = open.len();
+            if high.len() == len
+                && low.len() == len
+                && close.len() == len
+                && outputs[0].len() >= len
+            {
+                return Ok(run_avgprice_batch(
+                    open,
+                    high,
+                    low,
+                    close,
+                    &mut outputs[0][..len],
+                ));
+            }
+        }
         let (open, high, low, close) = quadruple_input(AVGPRICE_METADATA.name, inputs)?;
         validate_output_slices(&AVGPRICE_METADATA, outputs, 1)?;
         ensure_output_len(&AVGPRICE_METADATA, outputs[0].len(), open.len(), 0)?;
