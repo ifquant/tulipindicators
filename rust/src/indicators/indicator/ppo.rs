@@ -5,6 +5,7 @@ use crate::core::indicator::{
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, single_input};
 use crate::indicators::shared::EmaState;
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "ppo",
@@ -17,6 +18,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Ppo;
+
+impl Ppo {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<PpoState, IndicatorError> {
+        PpoState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Ppo {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -79,6 +86,18 @@ impl PpoStream {
             long_ema: EmaState::new(ema_multiplier(long_period)),
         })
     }
+
+    fn update_one(&mut self, sample: Real) -> Option<Real> {
+        let short_ema = self.short_ema.feed(sample);
+        let long_ema = self.long_ema.feed(sample);
+        let output = if self.progress >= 1 {
+            Some(100.0 * (short_ema - long_ema) / long_ema)
+        } else {
+            None
+        };
+        self.progress += 1;
+        output
+    }
 }
 
 impl IndicatorStream for PpoStream {
@@ -111,16 +130,82 @@ impl IndicatorStream for PpoStream {
 
         let mut out_index = 0usize;
         for &sample in input {
-            let short_ema = self.short_ema.feed(sample);
-            let long_ema = self.long_ema.feed(sample);
-            if self.progress >= 1 {
-                outputs[0][out_index] = 100.0 * (short_ema - long_ema) / long_ema;
+            if let Some(value) = self.update_one(sample) {
+                outputs[0][out_index] = value;
                 out_index += 1;
             }
-            self.progress += 1;
         }
 
         Ok(out_index)
+    }
+}
+
+pub struct PpoState {
+    short_period: usize,
+    long_period: usize,
+    stream: PpoStream,
+    history: RingHistory<Real>,
+}
+
+impl PpoState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let (short_period, long_period) = parse_options(options)?;
+        Ok(Self {
+            short_period,
+            long_period,
+            stream: PpoStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for PpoState {
+    type Input = Real;
+    type Output = Real;
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &sample in input {
+            if self.update(sample).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let value = self.stream.update_one(input);
+        if let Some(value) = value {
+            self.history.push(value);
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = PpoStream {
+            progress: 0,
+            short_ema: EmaState::new(ema_multiplier(self.short_period)),
+            long_ema: EmaState::new(ema_multiplier(self.long_period)),
+        };
+        self.history.clear();
     }
 }
 

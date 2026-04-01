@@ -5,6 +5,7 @@ use crate::core::indicator::{
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue, RingSum};
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "stoch",
@@ -17,6 +18,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Stoch;
+
+impl Stoch {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<StochState, IndicatorError> {
+        StochState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Stoch {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -178,6 +185,43 @@ impl StochStream {
             d_sum: RingSum::new(d_period),
         })
     }
+
+    fn update_one(&mut self, high: Real, low: Real, close: Real) -> Option<(Real, Real)> {
+        let index = self.progress;
+        self.max_queue.push(index, high);
+        self.min_queue.push(index, low);
+
+        let window_start = index.saturating_sub(self.k_period.saturating_sub(1));
+        self.max_queue.evict_before(window_start);
+        self.min_queue.evict_before(window_start);
+
+        let max = self.max_queue.front_value();
+        let min = self.min_queue.front_value();
+
+        let kdiff = max - min;
+        let kfast = if kdiff == 0.0 {
+            0.0
+        } else {
+            100.0 * ((close - min) / kdiff)
+        };
+        self.k_sum.push(kfast);
+
+        let output = if index >= self.k_period - 1 + self.k_slow - 1 {
+            let k_value = self.k_sum.sum / self.k_slow as Real;
+            self.d_sum.push(k_value);
+
+            if index >= self.k_period + self.k_slow + self.d_period - 3 {
+                Some((k_value, self.d_sum.sum / self.d_period as Real))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        self.progress += 1;
+        output
+    }
 }
 
 impl IndicatorStream for StochStream {
@@ -193,44 +237,86 @@ impl IndicatorStream for StochStream {
         let (high, low, close) = triple_input(METADATA.name, inputs)?;
         let mut stoch = Vec::new();
         let mut stoch_ma = Vec::new();
-        let lookback = self.k_period + self.k_slow + self.d_period - 3;
-        let kper = 1.0 / self.k_slow as Real;
-        let dper = 1.0 / self.d_period as Real;
-
-        for local_index in 0..high.len() {
-            let index = self.progress;
-            self.max_queue.push(index, high[local_index]);
-            self.min_queue.push(index, low[local_index]);
-
-            let window_start = index.saturating_sub(self.k_period.saturating_sub(1));
-            self.max_queue.evict_before(window_start);
-            self.min_queue.evict_before(window_start);
-
-            let max = self.max_queue.front_value();
-            let min = self.min_queue.front_value();
-
-            let kdiff = max - min;
-            let kfast = if kdiff == 0.0 {
-                0.0
-            } else {
-                100.0 * ((close[local_index] - min) / kdiff)
-            };
-            self.k_sum.push(kfast);
-
-            if index >= self.k_period - 1 + self.k_slow - 1 {
-                let k_value = self.k_sum.sum * kper;
-                self.d_sum.push(k_value);
-
-                if index >= lookback {
-                    stoch.push(k_value);
-                    stoch_ma.push(self.d_sum.sum * dper);
-                }
+        for ((&high, &low), &close) in high.iter().zip(low.iter()).zip(close.iter()) {
+            if let Some((k, d)) = self.update_one(high, low, close) {
+                stoch.push(k);
+                stoch_ma.push(d);
             }
-
-            self.progress += 1;
         }
 
         Ok(vec![stoch, stoch_ma])
+    }
+}
+
+pub struct StochState {
+    periods: (usize, usize, usize),
+    stream: StochStream,
+    history: RingHistory<(Real, Real)>,
+}
+
+impl StochState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let periods = parse_options(options)?;
+        Ok(Self {
+            periods,
+            stream: StochStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for StochState {
+    type Input = (Real, Real, Real);
+    type Output = (Real, Real);
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &(high, low, close) in input {
+            if self.update((high, low, close)).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let value = self.stream.update_one(input.0, input.1, input.2);
+        if let Some(value) = value {
+            self.history.push(value);
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = StochStream {
+            k_period: self.periods.0,
+            k_slow: self.periods.1,
+            d_period: self.periods.2,
+            progress: 0,
+            max_queue: MonotonicQueue::new(ExtremaKind::Max),
+            min_queue: MonotonicQueue::new(ExtremaKind::Min),
+            k_sum: RingSum::new(self.periods.1),
+            d_sum: RingSum::new(self.periods.2),
+        };
+        self.history.clear();
     }
 }
 

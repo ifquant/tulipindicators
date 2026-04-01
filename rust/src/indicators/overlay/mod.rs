@@ -32,6 +32,6 @@ pub use tema::Tema;
 pub use trima::Trima;
 pub use vidya::Vidya;
 pub use vwma::Vwma;
-pub use wilders::Wilders;
+pub use wilders::{Wilders, WildersState};
 pub use wma::Wma;
 pub use zlema::Zlema;

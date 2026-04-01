@@ -1,6 +1,6 @@
 use tulipindicators::{
     registry, Atr, Dm, DynamicIndicatorState, Ema, Indicator, IndicatorState,
-    IndicatorStateFactory, Macd, Real, Rsi, Sma,
+    IndicatorStateFactory, Macd, Natr, Ppo, Real, Rsi, Sma, Stoch, Wilders,
 };
 
 const EPSILON: Real = 1e-12;
@@ -403,5 +403,108 @@ fn macd_state_seed_and_indexed_history_match_batch_output() {
             }
             (left, right) => panic!("expected {right:?}, got {left:?}"),
         }
+    }
+}
+
+#[test]
+fn wilders_state_seed_and_indexed_history_match_batch_output() {
+    let input = close_series();
+    let options = [14.0];
+    let batch = Wilders.run(&[&input], &options).expect("wilders batch");
+    let expected = &batch[0];
+
+    let mut state = Wilders::state(&options, expected.len()).expect("wilders state");
+    let produced = state.seed(&input).expect("wilders seed");
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(state.latest(), expected.last().copied());
+
+    for index in 0..expected.len() {
+        assert_option_real_eq(state.get(index), Some(expected[expected.len() - 1 - index]));
+    }
+}
+
+#[test]
+fn natr_state_seed_and_indexed_history_match_batch_output() {
+    let (high, low, close) = high_low_close_series();
+    let options = [14.0];
+    let batch = Natr
+        .run(&[&high, &low, &close], &options)
+        .expect("natr batch");
+    let expected = &batch[0];
+
+    let inputs: Vec<(Real, Real, Real)> = high
+        .iter()
+        .copied()
+        .zip(low.iter().copied())
+        .zip(close.iter().copied())
+        .map(|((high, low), close)| (high, low, close))
+        .collect();
+    let mut state = Natr::state(&options, expected.len()).expect("natr state");
+    let produced = state.seed(&inputs).expect("natr seed");
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(state.latest(), expected.last().copied());
+
+    for index in 0..expected.len() {
+        assert_option_real_eq(state.get(index), Some(expected[expected.len() - 1 - index]));
+    }
+}
+
+#[test]
+fn ppo_state_seed_and_indexed_history_match_batch_output() {
+    let input = close_series();
+    let options = [12.0, 26.0];
+    let batch = Ppo.run(&[&input], &options).expect("ppo batch");
+    let expected = &batch[0];
+
+    let mut state = Ppo::state(&options, expected.len()).expect("ppo state");
+    let produced = state.seed(&input).expect("ppo seed");
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(state.latest(), expected.last().copied());
+
+    for index in 0..expected.len() {
+        assert_option_real_eq(state.get(index), Some(expected[expected.len() - 1 - index]));
+    }
+}
+
+#[test]
+fn stoch_state_seed_and_indexed_history_match_batch_output() {
+    let (high, low, close) = high_low_close_series();
+    let options = [14.0, 3.0, 3.0];
+    let batch = Stoch
+        .run(&[&high, &low, &close], &options)
+        .expect("stoch batch");
+    let expected_k = &batch[0];
+    let expected_d = &batch[1];
+
+    let inputs: Vec<(Real, Real, Real)> = high
+        .iter()
+        .copied()
+        .zip(low.iter().copied())
+        .zip(close.iter().copied())
+        .map(|((high, low), close)| (high, low, close))
+        .collect();
+    let mut state = Stoch::state(&options, expected_k.len()).expect("stoch state");
+    let produced = state.seed(&inputs).expect("stoch seed");
+    assert_eq!(produced, expected_k.len());
+    assert_eq!(state.len(), expected_k.len());
+    assert_option_pair_eq(
+        state.latest(),
+        Some((
+            *expected_k.last().expect("stoch k latest"),
+            *expected_d.last().expect("stoch d latest"),
+        )),
+    );
+
+    for index in 0..expected_k.len() {
+        assert_option_pair_eq(
+            state.get(index),
+            Some((
+                expected_k[expected_k.len() - 1 - index],
+                expected_d[expected_d.len() - 1 - index],
+            )),
+        );
     }
 }

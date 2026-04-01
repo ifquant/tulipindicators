@@ -4,6 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "wilders",
@@ -16,6 +17,15 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Wilders;
+
+impl Wilders {
+    pub fn state(
+        options: &[Real],
+        history_capacity: usize,
+    ) -> Result<WildersState, IndicatorError> {
+        WildersState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Wilders {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -141,6 +151,74 @@ impl IndicatorStream for WildersStream {
         }
 
         Ok(out_index)
+    }
+}
+
+pub struct WildersState {
+    period: usize,
+    stream: WildersStream,
+    history: RingHistory<Real>,
+}
+
+impl WildersState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let period = parse_period(options)?;
+        Ok(Self {
+            period,
+            stream: WildersStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for WildersState {
+    type Input = Real;
+    type Output = Real;
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &sample in input {
+            if self.update(sample).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let value = self.stream.feed_sample(input);
+        if let Some(value) = value {
+            self.history.push(value);
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = WildersStream {
+            progress: 0,
+            period: self.period,
+            warmup_sum: 0.0,
+            value: None,
+        };
+        self.history.clear();
     }
 }
 

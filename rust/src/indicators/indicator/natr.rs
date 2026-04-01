@@ -5,6 +5,7 @@ use crate::core::indicator::{
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
 use crate::indicators::shared::true_range;
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "natr",
@@ -17,6 +18,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Natr;
+
+impl Natr {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<NatrState, IndicatorError> {
+        NatrState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Natr {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -118,6 +125,34 @@ impl NatrStream {
             last_close: None,
         })
     }
+
+    fn update_one(&mut self, high: Real, low: Real, close: Real) -> Option<Real> {
+        let tr = match self.last_close {
+            Some(previous_close) => true_range(high, low, previous_close),
+            None => high - low,
+        };
+
+        let output = if self.progress < self.period {
+            self.sum += tr;
+            if self.progress + 1 == self.period {
+                let atr = self.sum / self.period as Real;
+                self.last_atr = Some(atr);
+                Some(100.0 * atr / close)
+            } else {
+                None
+            }
+        } else if let Some(last_atr) = self.last_atr {
+            let atr = (tr - last_atr).mul_add(1.0 / self.period as Real, last_atr);
+            self.last_atr = Some(atr);
+            Some(100.0 * atr / close)
+        } else {
+            None
+        };
+
+        self.last_close = Some(close);
+        self.progress += 1;
+        output
+    }
 }
 
 impl IndicatorStream for NatrStream {
@@ -133,27 +168,10 @@ impl IndicatorStream for NatrStream {
         let (high, low, close) = triple_input(METADATA.name, inputs)?;
         let mut output = Vec::with_capacity(high.len());
 
-        for index in 0..high.len() {
-            let tr = match self.last_close {
-                Some(previous_close) => true_range(high[index], low[index], previous_close),
-                None => high[index] - low[index],
-            };
-
-            if self.progress < self.period {
-                self.sum += tr;
-                if self.progress + 1 == self.period {
-                    let atr = self.sum / self.period as Real;
-                    self.last_atr = Some(atr);
-                    output.push(100.0 * atr / close[index]);
-                }
-            } else if let Some(last_atr) = self.last_atr {
-                let atr = (tr - last_atr) / self.period as Real + last_atr;
-                self.last_atr = Some(atr);
-                output.push(100.0 * atr / close[index]);
+        for ((&high, &low), &close) in high.iter().zip(low.iter()).zip(close.iter()) {
+            if let Some(value) = self.update_one(high, low, close) {
+                output.push(value);
             }
-
-            self.last_close = Some(close[index]);
-            self.progress += 1;
         }
 
         Ok(vec![output])
@@ -168,42 +186,83 @@ impl IndicatorStream for NatrStream {
         validate_output_slices(&METADATA, outputs, 1)?;
         ensure_output_len(&METADATA, outputs[0].len(), high.len(), 0)?;
 
-        let period = self.period;
-        let per = 1.0 / period as Real;
-        let mut sum = self.sum;
-        let mut last_atr = self.last_atr;
-        let mut last_close = self.last_close;
         let mut out_index = 0usize;
-
-        for index in 0..high.len() {
-            let tr = match last_close {
-                Some(previous_close) => true_range(high[index], low[index], previous_close),
-                None => high[index] - low[index],
-            };
-
-            if self.progress < period {
-                sum += tr;
-                if self.progress + 1 == period {
-                    let atr = sum * per;
-                    last_atr = Some(atr);
-                    outputs[0][out_index] = 100.0 * atr / close[index];
-                    out_index += 1;
-                }
-            } else if let Some(current_atr) = last_atr {
-                let atr = (tr - current_atr).mul_add(per, current_atr);
-                last_atr = Some(atr);
-                outputs[0][out_index] = 100.0 * atr / close[index];
+        for ((&high, &low), &close) in high.iter().zip(low.iter()).zip(close.iter()) {
+            if let Some(value) = self.update_one(high, low, close) {
+                outputs[0][out_index] = value;
                 out_index += 1;
             }
-
-            last_close = Some(close[index]);
-            self.progress += 1;
         }
-
-        self.sum = sum;
-        self.last_atr = last_atr;
-        self.last_close = last_close;
         Ok(out_index)
+    }
+}
+
+pub struct NatrState {
+    period: usize,
+    stream: NatrStream,
+    history: RingHistory<Real>,
+}
+
+impl NatrState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let period = parse_period(options)?;
+        Ok(Self {
+            period,
+            stream: NatrStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for NatrState {
+    type Input = (Real, Real, Real);
+    type Output = Real;
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &(high, low, close) in input {
+            if self.update((high, low, close)).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let value = self.stream.update_one(input.0, input.1, input.2);
+        if let Some(value) = value {
+            self.history.push(value);
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = NatrStream {
+            period: self.period,
+            progress: 0,
+            sum: 0.0,
+            last_atr: None,
+            last_close: None,
+        };
+        self.history.clear();
     }
 }
 
