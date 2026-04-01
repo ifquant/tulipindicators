@@ -4,6 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "atr",
@@ -16,6 +17,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Atr;
+
+impl Atr {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<AtrState, IndicatorError> {
+        AtrState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Atr {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -92,6 +99,42 @@ impl AtrStream {
             last_close: 0.0,
         })
     }
+
+    fn update_one(&mut self, high: Real, low: Real, close: Real) -> Option<Real> {
+        let period = self.period;
+        let per = 1.0 / period as Real;
+        let start = -(period as isize - 1);
+
+        if self.state_progress < 1 {
+            if self.state_progress == start {
+                self.sum = high - low;
+                self.last_close = close;
+                self.state_progress += 1;
+                self.progress += 1;
+                return None;
+            }
+
+            let tr = true_range(high, low, self.last_close);
+            self.sum += tr;
+            self.last_close = close;
+            self.state_progress += 1;
+            self.progress += 1;
+
+            if self.state_progress == 1 {
+                self.last = self.sum * per;
+                Some(self.last)
+            } else {
+                None
+            }
+        } else {
+            let tr = true_range(high, low, self.last_close);
+            self.last = (tr - self.last).mul_add(per, self.last);
+            self.last_close = close;
+            self.state_progress += 1;
+            self.progress += 1;
+            Some(self.last)
+        }
+    }
 }
 
 impl IndicatorStream for AtrStream {
@@ -122,61 +165,84 @@ impl IndicatorStream for AtrStream {
         validate_output_slices(&METADATA, outputs, 1)?;
         ensure_output_len(&METADATA, outputs[0].len(), high.len(), 0)?;
 
-        let period = self.period;
-        let per = 1.0 / period as Real;
-        let start = -(period as isize - 1);
-        let mut progress = self.state_progress;
-        let mut sum = self.sum;
-        let mut last = self.last;
-        let mut last_close = self.last_close;
         let mut out_index = 0usize;
-        let mut index = 0usize;
-        let mut processed = 0usize;
-
-        if progress < 1 {
-            if progress == start && index < high.len() {
-                sum = high[0] - low[0];
-                last_close = close[0];
-                progress += 1;
-                index += 1;
-                processed += 1;
-            }
-
-            while progress <= 0 && index < high.len() {
-                let tr = true_range(high[index], low[index], last_close);
-                sum += tr;
-                last_close = close[index];
-                progress += 1;
-                index += 1;
-                processed += 1;
-            }
-
-            if progress == 1 {
-                last = sum * per;
-                outputs[0][out_index] = last;
+        for ((&high, &low), &close) in high.iter().zip(low.iter()).zip(close.iter()) {
+            if let Some(value) = self.update_one(high, low, close) {
+                outputs[0][out_index] = value;
                 out_index += 1;
             }
         }
-
-        if progress >= 1 {
-            while index < high.len() {
-                let tr = true_range(high[index], low[index], last_close);
-                last = (tr - last).mul_add(per, last);
-                outputs[0][out_index] = last;
-                out_index += 1;
-                last_close = close[index];
-                progress += 1;
-                index += 1;
-                processed += 1;
-            }
-        }
-
-        self.progress += processed;
-        self.state_progress = progress;
-        self.sum = sum;
-        self.last = last;
-        self.last_close = last_close;
         Ok(out_index)
+    }
+}
+
+pub struct AtrState {
+    period: usize,
+    stream: AtrStream,
+    history: RingHistory<Real>,
+}
+
+impl AtrState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let period = parse_period(options)?;
+        Ok(Self {
+            period,
+            stream: AtrStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for AtrState {
+    type Input = (Real, Real, Real);
+    type Output = Real;
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &(high, low, close) in input {
+            if self.update((high, low, close)).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let value = self.stream.update_one(input.0, input.1, input.2);
+        if let Some(value) = value {
+            self.history.push(value);
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = AtrStream {
+            period: self.period,
+            progress: 0,
+            state_progress: -(self.period as isize - 1),
+            sum: 0.0,
+            last: 0.0,
+            last_close: 0.0,
+        };
+        self.history.clear();
     }
 }
 

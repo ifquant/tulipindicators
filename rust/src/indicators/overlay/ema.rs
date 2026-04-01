@@ -4,6 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "ema",
@@ -61,6 +62,12 @@ impl Indicator for Ema {
     }
 }
 
+impl Ema {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<EmaState, IndicatorError> {
+        EmaState::new(options, history_capacity)
+    }
+}
+
 struct EmaStream {
     multiplier: Real,
     last: Option<Real>,
@@ -75,6 +82,16 @@ impl EmaStream {
             last: None,
             progress: 0,
         })
+    }
+
+    fn update_one(&mut self, sample: Real) -> Real {
+        let value = match self.last {
+            Some(last) => (sample - last).mul_add(self.multiplier, last),
+            None => sample,
+        };
+        self.last = Some(value);
+        self.progress += 1;
+        value
     }
 }
 
@@ -106,48 +123,75 @@ impl IndicatorStream for EmaStream {
         if input.is_empty() {
             return Ok(0);
         }
+        for (out, &sample) in outputs[0][..input.len()].iter_mut().zip(input.iter()) {
+            *out = self.update_one(sample);
+        }
 
-        let mut input_ptr = input.as_ptr();
-        let mut out_ptr = outputs[0].as_mut_ptr();
+        Ok(input.len())
+    }
+}
+
+pub struct EmaState {
+    multiplier: Real,
+    stream: EmaStream,
+    history: RingHistory<Real>,
+}
+
+impl EmaState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let period = parse_period(options, METADATA.name)?;
+        Ok(Self {
+            multiplier: 2.0 / (period as Real + 1.0),
+            stream: EmaStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for EmaState {
+    type Input = Real;
+    type Output = Real;
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
         let mut produced = 0usize;
-
-        let mut value = match self.last {
-            Some(last) => {
-                let sample = unsafe { *input_ptr };
-                unsafe {
-                    *out_ptr = (sample - last) * self.multiplier + last;
-                    value_from_ptr(out_ptr)
-                }
+        for &sample in input {
+            let value = self.update(sample);
+            if value.is_some() {
+                produced += 1;
             }
-            None => {
-                let sample = unsafe { *input_ptr };
-                unsafe { *out_ptr = sample };
-                sample
-            }
-        };
-        self.last = Some(value);
-        self.progress += 1;
-        produced += 1;
-
-        unsafe {
-            input_ptr = input_ptr.add(1);
-            out_ptr = out_ptr.add(1);
         }
-
-        for _ in 1..input.len() {
-            let sample = unsafe { *input_ptr };
-            value = (sample - value).mul_add(self.multiplier, value);
-            unsafe {
-                *out_ptr = value;
-                input_ptr = input_ptr.add(1);
-                out_ptr = out_ptr.add(1);
-            }
-            self.last = Some(value);
-            self.progress += 1;
-            produced += 1;
-        }
-
         Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let value = self.stream.update_one(input);
+        self.history.push(value);
+        Some(value)
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = EmaStream {
+            multiplier: self.multiplier,
+            last: None,
+            progress: 0,
+        };
+        self.history.clear();
     }
 }
 
@@ -175,10 +219,6 @@ fn run_ema_batch(input: &[Real], multiplier: Real, output: &mut [Real]) -> usize
     }
 
     input.len()
-}
-
-unsafe fn value_from_ptr(ptr: *const Real) -> Real {
-    unsafe { *ptr }
 }
 
 fn parse_period(options: &[Real], indicator: &'static str) -> Result<usize, IndicatorError> {

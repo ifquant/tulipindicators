@@ -4,6 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "sma",
@@ -16,6 +17,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Sma;
+
+impl Sma {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<SmaState, IndicatorError> {
+        SmaState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Sma {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -108,6 +115,27 @@ impl SmaStream {
             progress: 0,
         })
     }
+
+    fn update_one(&mut self, sample: Real) -> Option<Real> {
+        let output = if self.buffer.len() < self.period {
+            self.buffer.push(sample);
+            self.sum += sample;
+            if self.buffer.len() == self.period {
+                Some(self.sum * self.scale)
+            } else {
+                None
+            }
+        } else {
+            self.sum -= self.buffer[self.cursor];
+            self.buffer[self.cursor] = sample;
+            self.sum += sample;
+            self.cursor = (self.cursor + 1) % self.period;
+            Some(self.sum * self.scale)
+        };
+
+        self.progress += 1;
+        output
+    }
 }
 
 impl IndicatorStream for SmaStream {
@@ -124,21 +152,9 @@ impl IndicatorStream for SmaStream {
         let mut output = Vec::with_capacity(input.len());
 
         for sample in input {
-            if self.buffer.len() < self.period {
-                self.buffer.push(*sample);
-                self.sum += *sample;
-                if self.buffer.len() == self.period {
-                    output.push(self.sum * self.scale);
-                }
-            } else {
-                self.sum -= self.buffer[self.cursor];
-                self.buffer[self.cursor] = *sample;
-                self.sum += *sample;
-                self.cursor = (self.cursor + 1) % self.period;
-                output.push(self.sum * self.scale);
+            if let Some(value) = self.update_one(*sample) {
+                output.push(value);
             }
-
-            self.progress += 1;
         }
 
         Ok(vec![output])
@@ -154,38 +170,83 @@ impl IndicatorStream for SmaStream {
         ensure_output_len(&METADATA, outputs[0].len(), input.len(), 0)?;
 
         let mut out_index = 0usize;
-        let buffer = &mut self.buffer;
-        let period = self.period;
-        let scale = self.scale;
-        let mut sum = self.sum;
-        let mut cursor = self.cursor;
-
         for &sample in input {
-            if buffer.len() < period {
-                buffer.push(sample);
-                sum += sample;
-                if buffer.len() == period {
-                    outputs[0][out_index] = sum * scale;
-                    out_index += 1;
-                }
-            } else {
-                sum -= buffer[cursor];
-                buffer[cursor] = sample;
-                sum += sample;
-                cursor += 1;
-                if cursor == period {
-                    cursor = 0;
-                }
-                outputs[0][out_index] = sum * scale;
+            if let Some(value) = self.update_one(sample) {
+                outputs[0][out_index] = value;
                 out_index += 1;
             }
-
-            self.progress += 1;
         }
-
-        self.sum = sum;
-        self.cursor = cursor;
         Ok(out_index)
+    }
+}
+
+pub struct SmaState {
+    period: usize,
+    stream: SmaStream,
+    history: RingHistory<Real>,
+}
+
+impl SmaState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let period = parse_period(options, METADATA.name)?;
+        Ok(Self {
+            period,
+            stream: SmaStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for SmaState {
+    type Input = Real;
+    type Output = Real;
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &sample in input {
+            if self.update(sample).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let value = self.stream.update_one(input);
+        if let Some(value) = value {
+            self.history.push(value);
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = SmaStream {
+            period: self.period,
+            scale: 1.0 / self.period as Real,
+            sum: 0.0,
+            buffer: Vec::with_capacity(self.period),
+            cursor: 0,
+            progress: 0,
+        };
+        self.history.clear();
     }
 }
 

@@ -1,6 +1,6 @@
 use tulipindicators::{
-    registry, Dm, DynamicIndicatorState, Indicator, IndicatorState, IndicatorStateFactory, Real,
-    Rsi,
+    registry, Atr, Dm, DynamicIndicatorState, Ema, Indicator, IndicatorState,
+    IndicatorStateFactory, Macd, Real, Rsi, Sma,
 };
 
 const EPSILON: Real = 1e-12;
@@ -55,6 +55,28 @@ fn high_low_series() -> (Vec<Real>, Vec<Real>) {
         })
         .collect();
     (high, low)
+}
+
+fn high_low_close_series() -> (Vec<Real>, Vec<Real>, Vec<Real>) {
+    let high = (0..96)
+        .map(|index| {
+            let x = index as Real;
+            120.0 + x * 0.18 + (x * 0.11).sin() * 2.6 + 1.4
+        })
+        .collect();
+    let low = (0..96)
+        .map(|index| {
+            let x = index as Real;
+            117.0 + x * 0.16 + (x * 0.07).cos() * 2.1 - 1.3
+        })
+        .collect();
+    let close = (0..96)
+        .map(|index| {
+            let x = index as Real;
+            118.5 + x * 0.17 + (x * 0.13).sin() * 1.8 + (x * 0.05).cos() * 0.9
+        })
+        .collect();
+    (high, low, close)
 }
 
 #[test]
@@ -276,4 +298,110 @@ fn indicator_state_factory_creates_dynamic_states() {
     let produced = state.seed_columns(&[&input]).expect("factory seed");
     assert_eq!(produced, batch[0].len());
     assert_option_real_eq(state.latest().map(|values| values[0]), expected);
+}
+
+#[test]
+fn ema_state_seed_and_indexed_history_match_batch_output() {
+    let input = close_series();
+    let options = [12.0];
+    let batch = Ema.run(&[&input], &options).expect("ema batch");
+    let expected = &batch[0];
+
+    let mut state = Ema::state(&options, expected.len()).expect("ema state");
+    let produced = state.seed(&input).expect("ema seed");
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(state.latest(), expected.last().copied());
+
+    for index in 0..expected.len() {
+        assert_option_real_eq(state.get(index), Some(expected[expected.len() - 1 - index]));
+    }
+}
+
+#[test]
+fn sma_state_seed_and_indexed_history_match_batch_output() {
+    let input = close_series();
+    let options = [10.0];
+    let batch = Sma.run(&[&input], &options).expect("sma batch");
+    let expected = &batch[0];
+
+    let mut state = Sma::state(&options, expected.len()).expect("sma state");
+    let produced = state.seed(&input).expect("sma seed");
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(state.latest(), expected.last().copied());
+
+    for index in 0..expected.len() {
+        assert_option_real_eq(state.get(index), Some(expected[expected.len() - 1 - index]));
+    }
+}
+
+#[test]
+fn atr_state_seed_and_indexed_history_match_batch_output() {
+    let (high, low, close) = high_low_close_series();
+    let options = [14.0];
+    let batch = Atr
+        .run(&[&high, &low, &close], &options)
+        .expect("atr batch");
+    let expected = &batch[0];
+
+    let inputs: Vec<(Real, Real, Real)> = high
+        .iter()
+        .copied()
+        .zip(low.iter().copied())
+        .zip(close.iter().copied())
+        .map(|((high, low), close)| (high, low, close))
+        .collect();
+    let mut state = Atr::state(&options, expected.len()).expect("atr state");
+    let produced = state.seed(&inputs).expect("atr seed");
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(state.latest(), expected.last().copied());
+
+    for index in 0..expected.len() {
+        assert_option_real_eq(state.get(index), Some(expected[expected.len() - 1 - index]));
+    }
+}
+
+#[test]
+fn macd_state_seed_and_indexed_history_match_batch_output() {
+    let input = close_series();
+    let options = [12.0, 26.0, 9.0];
+    let batch = Macd.run(&[&input], &options).expect("macd batch");
+    let expected_macd = &batch[0];
+    let expected_signal = &batch[1];
+    let expected_hist = &batch[2];
+
+    let mut state = Macd::state(&options, expected_macd.len()).expect("macd state");
+    let produced = state.seed(&input).expect("macd seed");
+    assert_eq!(produced, expected_macd.len());
+    assert_eq!(state.len(), expected_macd.len());
+    assert_option_pair_eq(
+        state.latest().map(|(macd, signal, _)| (macd, signal)),
+        Some((
+            *expected_macd.last().expect("macd latest"),
+            *expected_signal.last().expect("signal latest"),
+        )),
+    );
+    assert_option_real_eq(
+        state.latest().map(|(_, _, hist)| hist),
+        expected_hist.last().copied(),
+    );
+
+    for index in 0..expected_macd.len() {
+        let actual = state.get(index);
+        let expected = Some((
+            expected_macd[expected_macd.len() - 1 - index],
+            expected_signal[expected_signal.len() - 1 - index],
+            expected_hist[expected_hist.len() - 1 - index],
+        ));
+        match (actual, expected) {
+            (Some((am, asg, ah)), Some((em, es, eh))) => {
+                assert_real_eq(am, em);
+                assert_real_eq(asg, es);
+                assert_real_eq(ah, eh);
+            }
+            (left, right) => panic!("expected {right:?}, got {left:?}"),
+        }
+    }
 }

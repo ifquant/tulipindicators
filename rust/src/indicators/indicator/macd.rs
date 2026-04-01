@@ -5,6 +5,7 @@ use crate::core::indicator::{
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 use crate::indicators::shared::EmaState;
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "macd",
@@ -28,6 +29,12 @@ const MACDFIX_METADATA: IndicatorMetadata = IndicatorMetadata {
 pub struct Macd;
 #[derive(Debug, Clone, Copy)]
 pub struct MacdFix;
+
+impl Macd {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<MacdState, IndicatorError> {
+        MacdState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Macd {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -197,6 +204,36 @@ impl MacdStream {
             signal_ema: None,
         }
     }
+
+    fn update_one(&mut self, sample: Real) -> Option<(Real, Real, Real)> {
+        let short_value = self.short_ema.feed(sample);
+        let long_value = self.long_ema.feed(sample);
+        let index = self.progress;
+        let mut output = None;
+
+        if index >= 1 {
+            let macd_value = short_value - long_value;
+
+            if index == self.long_period - 1 {
+                self.signal_ema = Some(macd_value);
+            }
+
+            if index >= self.long_period - 1 {
+                let signal_value = match self.signal_ema {
+                    Some(current) if index > self.long_period - 1 => {
+                        (macd_value - current).mul_add(self.signal_multiplier, current)
+                    }
+                    Some(current) => current,
+                    None => macd_value,
+                };
+                self.signal_ema = Some(signal_value);
+                output = Some((macd_value, signal_value, macd_value - signal_value));
+            }
+        }
+
+        self.progress += 1;
+        output
+    }
 }
 
 impl IndicatorStream for MacdStream {
@@ -232,39 +269,88 @@ impl IndicatorStream for MacdStream {
         ensure_output_len(&METADATA, outputs[1].len(), input.len(), 1)?;
         ensure_output_len(&METADATA, outputs[2].len(), input.len(), 2)?;
         let mut out_index = 0usize;
-
-        for sample in input {
-            let short_value = self.short_ema.feed(*sample);
-            let long_value = self.long_ema.feed(*sample);
-            let index = self.progress;
-
-            if index >= 1 {
-                let macd_value = short_value - long_value;
-
-                if index == self.long_period - 1 {
-                    self.signal_ema = Some(macd_value);
-                }
-
-                if index >= self.long_period - 1 {
-                    let signal_value = match self.signal_ema {
-                        Some(current) if index > self.long_period - 1 => {
-                            (macd_value - current).mul_add(self.signal_multiplier, current)
-                        }
-                        Some(current) => current,
-                        None => macd_value,
-                    };
-                    self.signal_ema = Some(signal_value);
-                    outputs[0][out_index] = macd_value;
-                    outputs[1][out_index] = signal_value;
-                    outputs[2][out_index] = macd_value - signal_value;
-                    out_index += 1;
-                }
+        for &sample in input {
+            if let Some((macd, signal, hist)) = self.update_one(sample) {
+                outputs[0][out_index] = macd;
+                outputs[1][out_index] = signal;
+                outputs[2][out_index] = hist;
+                out_index += 1;
             }
-
-            self.progress += 1;
         }
 
         Ok(out_index)
+    }
+}
+
+pub struct MacdState {
+    short_period: usize,
+    long_period: usize,
+    signal_period: usize,
+    stream: MacdStream,
+    history: RingHistory<(Real, Real, Real)>,
+}
+
+impl MacdState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let (short_period, long_period, signal_period) = parse_options(options)?;
+        Ok(Self {
+            short_period,
+            long_period,
+            signal_period,
+            stream: MacdStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for MacdState {
+    type Input = Real;
+    type Output = (Real, Real, Real);
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &sample in input {
+            if self.update(sample).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let value = self.stream.update_one(input);
+        if let Some(value) = value {
+            self.history.push(value);
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = MacdStream::new(&[
+            self.short_period as Real,
+            self.long_period as Real,
+            self.signal_period as Real,
+        ])
+        .expect("macd state reset should reuse validated options");
+        self.history.clear();
     }
 }
 
