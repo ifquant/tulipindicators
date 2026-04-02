@@ -19,8 +19,8 @@ pub use crate::core::error::IndicatorError;
 pub use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 pub use crate::core::types::{IndicatorCategory, Real};
 pub use crate::indicators::indicator::{
-    Atr, AtrState, Dm, DmState, Macd, MacdState, Natr, NatrState, Ppo, PpoState, Rsi, RsiState,
-    Stoch, StochState,
+    Adx, AdxState, Adxr, AdxrState, Atr, AtrState, Di, DiState, Dm, DmState, Dx, DxState, Macd,
+    MacdState, Natr, NatrState, Ppo, PpoState, Rsi, RsiState, Stoch, StochState,
 };
 pub use crate::indicators::overlay::{Ema, EmaState, Sma, SmaState, Wilders, WildersState};
 pub use crate::registry::{all, find, ATR, BBANDS, DEMA, EMA, MACD, RSI, SMA, STOCH, TEMA, TRIX};

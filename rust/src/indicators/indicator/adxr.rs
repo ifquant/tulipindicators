@@ -7,6 +7,7 @@ use crate::core::validation::{double_input, expect_option_count, parse_usize_opt
 use crate::indicators::shared::{
     directional_movement, directional_ratio, DirectionalMovementState, WildersAverageState,
 };
+use crate::state::{IndicatorState, RingHistory};
 use std::collections::VecDeque;
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
@@ -20,6 +21,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Adxr;
+
+impl Adxr {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<AdxrState, IndicatorError> {
+        AdxrState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Adxr {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -153,6 +160,26 @@ impl AdxrStream {
             history: VecDeque::with_capacity(period.saturating_sub(1)),
         })
     }
+
+    fn update_one(&mut self, high: Real, low: Real) -> Option<Real> {
+        let output = self.dm_state.feed(high, low).and_then(|(up, down)| {
+            let dx = directional_ratio(up, down);
+            self.adx_state.feed(dx).and_then(|adx| {
+                let result = if self.history.len() == self.period - 1 {
+                    Some(0.5 * (adx + self.history[0]))
+                } else {
+                    None
+                };
+                self.history.push_back(adx);
+                if self.history.len() > self.period - 1 {
+                    self.history.pop_front();
+                }
+                result
+            })
+        });
+        self.progress += 1;
+        output
+    }
 }
 
 impl IndicatorStream for AdxrStream {
@@ -169,22 +196,79 @@ impl IndicatorStream for AdxrStream {
         let mut output = Vec::new();
 
         for (&high_value, &low_value) in high.iter().zip(low.iter()) {
-            if let Some((up, down)) = self.dm_state.feed(high_value, low_value) {
-                let dx = directional_ratio(up, down);
-                if let Some(adx) = self.adx_state.feed(dx) {
-                    if self.history.len() == self.period - 1 {
-                        output.push(0.5 * (adx + self.history[0]));
-                    }
-                    self.history.push_back(adx);
-                    if self.history.len() > self.period - 1 {
-                        self.history.pop_front();
-                    }
-                }
+            if let Some(value) = self.update_one(high_value, low_value) {
+                output.push(value);
             }
-            self.progress += 1;
         }
 
         Ok(vec![output])
+    }
+}
+
+pub struct AdxrState {
+    period: usize,
+    stream: AdxrStream,
+    history: RingHistory<Real>,
+}
+
+impl AdxrState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let period = parse_period(options)?;
+        Ok(Self {
+            period,
+            stream: AdxrStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for AdxrState {
+    type Input = (Real, Real);
+    type Output = Real;
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &(high, low) in input {
+            if self.update((high, low)).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let output = self.stream.update_one(input.0, input.1);
+        if let Some(value) = output {
+            self.history.push(value);
+        }
+        output
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = AdxrStream {
+            progress: 0,
+            period: self.period,
+            dm_state: DirectionalMovementState::new(self.period),
+            adx_state: WildersAverageState::new(self.period),
+            history: VecDeque::with_capacity(self.period.saturating_sub(1)),
+        };
+        self.history.clear();
     }
 }
 

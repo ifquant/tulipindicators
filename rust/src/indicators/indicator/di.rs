@@ -5,6 +5,7 @@ use crate::core::indicator::{
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
 use crate::indicators::shared::DirectionalIndexState;
+use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "di",
@@ -17,6 +18,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Di;
+
+impl Di {
+    pub fn state(options: &[Real], history_capacity: usize) -> Result<DiState, IndicatorError> {
+        DiState::new(options, history_capacity)
+    }
+}
 
 impl Indicator for Di {
     fn metadata(&self) -> &'static IndicatorMetadata {
@@ -159,6 +166,15 @@ impl DiStream {
             state: DirectionalIndexState::new(parse_period(options)?),
         })
     }
+
+    fn update_one(&mut self, high: Real, low: Real, close: Real) -> Option<(Real, Real)> {
+        let output = self
+            .state
+            .feed(high, low, close)
+            .map(|(up, down, atr)| (100.0 * up / atr, 100.0 * down / atr));
+        self.progress += 1;
+        output
+    }
 }
 
 impl IndicatorStream for DiStream {
@@ -176,14 +192,77 @@ impl IndicatorStream for DiStream {
         let mut minus = Vec::new();
 
         for index in 0..high.len() {
-            if let Some((up, down, atr)) = self.state.feed(high[index], low[index], close[index]) {
-                plus.push(100.0 * up / atr);
-                minus.push(100.0 * down / atr);
+            if let Some((up, down)) = self.update_one(high[index], low[index], close[index]) {
+                plus.push(up);
+                minus.push(down);
             }
-            self.progress += 1;
         }
 
         Ok(vec![plus, minus])
+    }
+}
+
+pub struct DiState {
+    period: usize,
+    stream: DiStream,
+    history: RingHistory<(Real, Real)>,
+}
+
+impl DiState {
+    pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
+        let period = parse_period(options)?;
+        Ok(Self {
+            period,
+            stream: DiStream::new(options)?,
+            history: RingHistory::new(history_capacity),
+        })
+    }
+}
+
+impl IndicatorState for DiState {
+    type Input = (Real, Real, Real);
+    type Output = (Real, Real);
+
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
+        let mut produced = 0usize;
+        for &(high, low, close) in input {
+            if self.update((high, low, close)).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
+    fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
+        let output = self.stream.update_one(input.0, input.1, input.2);
+        if let Some(value) = output {
+            self.history.push(value);
+        }
+        output
+    }
+
+    fn latest(&self) -> Option<Self::Output> {
+        self.history.latest()
+    }
+
+    fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
+        self.history.get(index_from_latest)
+    }
+
+    fn len(&self) -> usize {
+        self.history.len()
+    }
+
+    fn history_capacity(&self) -> usize {
+        self.history.capacity()
+    }
+
+    fn reset(&mut self) {
+        self.stream = DiStream {
+            progress: 0,
+            state: DirectionalIndexState::new(self.period),
+        };
+        self.history.clear();
     }
 }
 

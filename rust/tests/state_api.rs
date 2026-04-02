@@ -1,5 +1,5 @@
 use tulipindicators::{
-    registry, Atr, Dm, DynamicIndicatorState, Ema, Indicator, IndicatorState,
+    registry, Adx, Adxr, Atr, Di, Dm, Dx, DynamicIndicatorState, Ema, Indicator, IndicatorState,
     IndicatorStateFactory, Macd, Natr, Ppo, Real, Rsi, Sma, Stoch, Wilders,
 };
 
@@ -506,5 +506,100 @@ fn stoch_state_seed_and_indexed_history_match_batch_output() {
                 expected_d[expected_d.len() - 1 - index],
             )),
         );
+    }
+}
+
+#[test]
+fn dx_state_seed_and_indexed_history_match_batch_output() {
+    let (high, low) = high_low_series();
+    let options = [14.0];
+    let batch = Dx.run(&[&high, &low], &options).expect("dx batch");
+    let expected = &batch[0];
+
+    let inputs: Vec<(Real, Real)> = high.iter().copied().zip(low.iter().copied()).collect();
+    let mut state = Dx::state(&options, expected.len()).expect("dx state");
+    let produced = state.seed(&inputs).expect("dx seed");
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(state.latest(), expected.last().copied());
+
+    for index in 0..expected.len() {
+        assert_option_real_eq(state.get(index), Some(expected[expected.len() - 1 - index]));
+    }
+}
+
+#[test]
+fn di_state_seed_and_indexed_history_match_batch_output() {
+    let (high, low, close) = high_low_close_series();
+    let options = [14.0];
+    let batch = Di.run(&[&high, &low, &close], &options).expect("di batch");
+    let expected_plus = &batch[0];
+    let expected_minus = &batch[1];
+
+    let inputs: Vec<(Real, Real, Real)> = high
+        .iter()
+        .copied()
+        .zip(low.iter().copied())
+        .zip(close.iter().copied())
+        .map(|((high, low), close)| (high, low, close))
+        .collect();
+    let mut state = Di::state(&options, expected_plus.len()).expect("di state");
+    let produced = state.seed(&inputs).expect("di seed");
+    assert_eq!(produced, expected_plus.len());
+    assert_eq!(state.len(), expected_plus.len());
+    assert_option_pair_eq(
+        state.latest(),
+        Some((
+            *expected_plus.last().expect("plus di latest"),
+            *expected_minus.last().expect("minus di latest"),
+        )),
+    );
+
+    for index in 0..expected_plus.len() {
+        assert_option_pair_eq(
+            state.get(index),
+            Some((
+                expected_plus[expected_plus.len() - 1 - index],
+                expected_minus[expected_minus.len() - 1 - index],
+            )),
+        );
+    }
+}
+
+#[test]
+fn adx_state_seed_and_indexed_history_match_batch_output() {
+    let (high, low) = high_low_series();
+    let options = [14.0];
+    let batch = Adx.run(&[&high, &low], &options).expect("adx batch");
+    let expected = &batch[0];
+
+    let inputs: Vec<(Real, Real)> = high.iter().copied().zip(low.iter().copied()).collect();
+    let mut state = Adx::state(&options, expected.len()).expect("adx state");
+    let produced = state.seed(&inputs).expect("adx seed");
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(state.latest(), expected.last().copied());
+
+    for index in 0..expected.len() {
+        assert_option_real_eq(state.get(index), Some(expected[expected.len() - 1 - index]));
+    }
+}
+
+#[test]
+fn adxr_state_seed_and_indexed_history_match_batch_output() {
+    let (high, low) = high_low_series();
+    let options = [14.0];
+    let batch = Adxr.run(&[&high, &low], &options).expect("adxr batch");
+    let expected = &batch[0];
+
+    let inputs: Vec<(Real, Real)> = high.iter().copied().zip(low.iter().copied()).collect();
+    let mut state = Adxr::state(&options, expected.len()).expect("adxr state");
+    let produced = state.seed(&inputs).expect("adxr seed");
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(state.latest(), expected.last().copied());
+
+    for index in 0..expected.len() {
+        assert_option_real_eq(state.get(index), Some(expected[expected.len() - 1 - index]));
     }
 }
