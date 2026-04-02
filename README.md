@@ -55,6 +55,103 @@ bindings to other languages, since it makes it very easy to update versions.
 For usage information, please see:
 [https://tulipindicators.org/usage](https://tulipindicators.org/usage)
 
+## Rust State API
+
+The Rust implementation keeps the existing high-performance batch layer:
+
+- `run(...)`
+- `run_in_place(...)`
+
+Those paths are still the recommended choice for offline analysis, benchmarking,
+and caller-managed output buffers.
+
+On top of that batch layer, the Rust crate now also exposes a stateful API for
+incremental usage:
+
+- seed from historical data once
+- update with one new sample at a time
+- keep a fixed-size history ring for indexed access
+
+The state layer does not shift buffers when history fills up. It uses a fixed
+capacity ring buffer and overwrites the oldest values.
+
+### Typed State Example
+
+Use a typed state wrapper when you know the indicator type at compile time.
+
+```rust
+use tulipindicators::{IndicatorState, Rsi};
+
+let closes = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
+let mut rsi = Rsi::state(&[3.0], 32)?;
+
+// Seed from historical data.
+let produced = rsi.seed(&closes)?;
+assert!(produced <= closes.len());
+
+// Incrementally update with one new value.
+let latest = rsi.update(106.0);
+
+// Read the latest and prior outputs.
+let current = rsi.latest();
+let previous = rsi.get(1);
+```
+
+Typed state wrappers are currently available for several high-frequency
+indicators, including:
+
+- `RsiState`
+- `DmState`
+- `DxState`
+- `DiState`
+- `AdxState`
+- `AdxrState`
+- `EmaState`
+- `SmaState`
+- `WildersState`
+- `AtrState`
+- `NatrState`
+- `MacdState`
+- `PpoState`
+- `StochState`
+
+### Dynamic State Example
+
+Use the dynamic state layer when the indicator is selected by name at runtime.
+
+```rust
+use tulipindicators::{DynamicIndicatorState, IndicatorStateFactory, RSI};
+
+let closes = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
+
+// Build by registry name.
+let mut by_name = DynamicIndicatorState::from_name("rsi", &[3.0], 32)?;
+by_name.seed_columns(&[&closes])?;
+let next = by_name.update(&[106.0])?;
+
+// Or build directly from a static indicator handle.
+let mut by_factory = RSI.dynamic_state(&[3.0], 32)?;
+by_factory.seed_columns(&[&closes])?;
+assert_eq!(by_factory.latest(), by_name.latest());
+```
+
+For multi-input indicators, `seed_columns(...)` and `update(...)` use one value
+per declared input. For example:
+
+- `dm.update(&[high, low])`
+- `di.update(&[high, low, close])`
+- `stoch.update(&[high, low, close])`
+
+### Choosing Between Batch and State
+
+- Use `run(...)` when you want the simplest batch API.
+- Use `run_in_place(...)` when you want maximum batch performance and control
+  over output buffers.
+- Use typed `FooState` wrappers when you process one sample at a time and want a
+  strongly typed incremental API.
+- Use `DynamicIndicatorState` when the indicator is selected dynamically at
+  runtime.
+
 
 ## Indicator Listing
 ```
