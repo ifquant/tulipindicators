@@ -65,6 +65,9 @@ The Rust implementation keeps the existing high-performance batch layer:
 Those paths are still the recommended choice for offline analysis, benchmarking,
 and caller-managed output buffers.
 
+See also:
+- [`tutorials/state-api.md`](tutorials/state-api.md)
+
 On top of that batch layer, the Rust crate now also exposes a stateful API for
 incremental usage:
 

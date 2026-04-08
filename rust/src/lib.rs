@@ -1,3 +1,60 @@
+//! Rust bindings and stateful APIs for Tulip Indicators.
+//!
+//! The crate keeps the existing high-performance batch layer:
+//!
+//! - [`Indicator::run`]
+//! - [`Indicator::run_in_place`]
+//!
+//! On top of that batch layer, it also exposes a stateful incremental API:
+//!
+//! - typed state wrappers such as [`RsiState`] and [`MacdState`]
+//! - runtime-selected [`DynamicIndicatorState`]
+//! - fixed-capacity history access through [`IndicatorState::latest`] and
+//!   [`IndicatorState::get`]
+//!
+//! For a longer guide, see the repository document:
+//! `tutorials/state-api.md`.
+//!
+//! # Typed state example
+//!
+//! ```
+//! use tulipindicators::{IndicatorState, Real, Rsi};
+//!
+//! let closes: Vec<Real> = vec![
+//!     100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0, 106.0, 105.5,
+//! ];
+//! let mut state = Rsi::state(&[3.0], 16)?;
+//!
+//! let produced = state.seed(&closes)?;
+//! assert!(produced <= closes.len());
+//!
+//! let latest = state.update(106.5);
+//! assert_eq!(latest, state.latest());
+//! let _previous = state.get(1);
+//! # Ok::<(), tulipindicators::IndicatorError>(())
+//! ```
+//!
+//! # Dynamic state example
+//!
+//! ```
+//! use tulipindicators::{DynamicIndicatorState, IndicatorStateFactory, Real, RSI};
+//!
+//! let closes: Vec<Real> = vec![
+//!     100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0, 106.0, 105.5,
+//! ];
+//!
+//! let mut by_name = DynamicIndicatorState::from_name("rsi", &[3.0], 16)?;
+//! by_name.seed_columns(&[&closes])?;
+//! let next = [106.5];
+//! let _ = by_name.update(&next)?;
+//!
+//! let mut by_factory = RSI.dynamic_state(&[3.0], 16)?;
+//! by_factory.seed_columns(&[&closes])?;
+//! let _ = by_factory.update(&next)?;
+//! assert_eq!(by_factory.latest(), by_name.latest());
+//! # Ok::<(), tulipindicators::IndicatorError>(())
+//! ```
+//!
 pub mod benchmark;
 pub mod candles;
 pub mod core;
