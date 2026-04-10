@@ -192,6 +192,9 @@ fn run_ema_batch(input: &[Real], multiplier: Real, output: &mut [Real]) -> usize
     debug_assert!(output.len() >= input.len());
 
     let mut value = input[0];
+    // SAFETY: `input_ptr` traverses the initialized `input[1..]` region exactly
+    // once and `out_ptr` writes exactly `input.len()` elements into `output`.
+    // The debug assertion above guarantees the destination capacity.
     unsafe {
         let mut input_ptr = input.as_ptr().add(1);
         let mut out_ptr = output.as_mut_ptr();

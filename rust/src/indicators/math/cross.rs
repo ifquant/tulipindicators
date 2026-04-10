@@ -178,6 +178,10 @@ fn run_crossover_batch(left: &[Real], right: &[Real], output: &mut [Real]) -> us
     debug_assert_eq!(right.len(), left.len());
     debug_assert!(output.len() >= output_len);
 
+    // SAFETY: the loop reads adjacent pairs from equally sized `left` and
+    // `right` slices and writes exactly `output_len` values into `output`.
+    // The debug assertions above guarantee matching input lengths and enough
+    // output capacity.
     unsafe {
         let mut left_ptr = left.as_ptr();
         let mut right_ptr = right.as_ptr();
