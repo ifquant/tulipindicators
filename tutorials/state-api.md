@@ -10,9 +10,13 @@ The crate now has three distinct ways to use an indicator:
 1. Batch convenience
 
 - `run(...)`
+- `run_single(...)`
 
 Use this when you want the simplest batch API and do not care about caller-owned
 output buffers.
+
+For one-output indicators, `run_single(...)` is usually the better batch entry
+point because it returns `Vec<Real>` directly instead of `Vec<Vec<Real>>`.
 
 2. Batch performance
 
@@ -66,6 +70,23 @@ let current = rsi.latest();
 let previous = rsi.get(1);
 
 # let _ = (latest, current, previous);
+# Ok::<(), tulipindicators::IndicatorError>(())
+```
+
+## Batch Single-Output
+
+When an indicator only has one output series, you can stay on the batch API and
+avoid `batch[0]` unpacking:
+
+```rust
+use tulipindicators::{Indicator, Rsi};
+
+let history = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
+let values = Rsi.run_single(&[&history], &[3.0])?;
+
+assert!(!values.is_empty());
+assert!(values.iter().all(|value| value.is_finite()));
+
 # Ok::<(), tulipindicators::IndicatorError>(())
 ```
 

@@ -60,10 +60,15 @@ For usage information, please see:
 The Rust implementation keeps the existing high-performance batch layer:
 
 - `run(...)`
+- `run_single(...)`
 - `run_in_place(...)`
 
 Those paths are still the recommended choice for offline analysis, benchmarking,
 and caller-managed output buffers.
+
+For single-output indicators such as `rsi`, `ema`, or `atr`, prefer
+`run_single(...)` when you only need that one output series and do not want to
+unwrap `Vec<Vec<Real>>` manually.
 
 See also:
 - [`tutorials/state-api.md`](tutorials/state-api.md)
@@ -98,6 +103,20 @@ let latest = rsi.update(106.0);
 // Read the latest and prior outputs.
 let current = rsi.latest();
 let previous = rsi.get(1);
+```
+
+### Batch Single-Output Example
+
+Use `run_single(...)` when the indicator has exactly one output and you want the
+simple batch API without `batch[0]` unpacking.
+
+```rust
+use tulipindicators::{Indicator, Rsi};
+
+let closes = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
+let values = Rsi.run_single(&[&closes], &[3.0])?;
+
+assert!(!values.is_empty());
 ```
 
 Typed state wrappers are currently available for several high-frequency
@@ -148,6 +167,8 @@ per declared input. For example:
 ### Choosing Between Batch and State
 
 - Use `run(...)` when you want the simplest batch API.
+- Use `run_single(...)` when the indicator has one output and you want that
+  single series directly.
 - Use `run_in_place(...)` when you want maximum batch performance and control
   over output buffers.
 - Use typed `FooState` wrappers when you process one sample at a time and want a
