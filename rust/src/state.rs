@@ -133,19 +133,27 @@ struct BatchState {
 }
 
 impl DynamicIndicatorState {
+    fn build_backend(
+        indicator: &'static dyn Indicator,
+        metadata: &'static IndicatorMetadata,
+        options: &[Real],
+    ) -> Result<DynamicStateBackend, IndicatorError> {
+        Ok(match indicator.create_stream(options)? {
+            Some(stream) => DynamicStateBackend::Stream(stream),
+            None => DynamicStateBackend::Batch(BatchState {
+                input_history: vec![Vec::new(); metadata.input_names.len()],
+                produced: 0,
+            }),
+        })
+    }
+
     pub fn new(
         indicator: &'static dyn Indicator,
         options: &[Real],
         history_capacity: usize,
     ) -> Result<Self, IndicatorError> {
         let metadata = indicator.metadata();
-        let backend = match indicator.create_stream(options)? {
-            Some(stream) => DynamicStateBackend::Stream(stream),
-            None => DynamicStateBackend::Batch(BatchState {
-                input_history: vec![Vec::new(); metadata.input_names.len()],
-                produced: 0,
-            }),
-        };
+        let backend = Self::build_backend(indicator, metadata, options)?;
         let output_scratch = vec![vec![0.0; 1]; metadata.output_names.len()];
 
         Ok(Self {
@@ -163,9 +171,8 @@ impl DynamicIndicatorState {
         options: &[Real],
         history_capacity: usize,
     ) -> Result<Self, IndicatorError> {
-        let indicator = registry::find(name).ok_or(IndicatorError::InternalInvariant {
-            indicator: "registry",
-            reason: "indicator name was not found",
+        let indicator = registry::find(name).ok_or_else(|| IndicatorError::UnknownIndicator {
+            name: name.to_string(),
         })?;
         Self::new(indicator, options, history_capacity)
     }
@@ -297,19 +304,10 @@ impl DynamicIndicatorState {
         self.history.latest().is_some()
     }
 
-    pub fn reset(&mut self) {
-        self.backend = match self
-            .indicator
-            .create_stream(&self.options)
-            .expect("indicator state reset should not fail after construction")
-        {
-            Some(stream) => DynamicStateBackend::Stream(stream),
-            None => DynamicStateBackend::Batch(BatchState {
-                input_history: vec![Vec::new(); self.metadata.input_names.len()],
-                produced: 0,
-            }),
-        };
+    pub fn reset(&mut self) -> Result<(), IndicatorError> {
+        self.backend = Self::build_backend(self.indicator, self.metadata, &self.options)?;
         self.history.clear();
+        Ok(())
     }
 
     fn recompute_batch_backend(&mut self) -> Result<usize, IndicatorError> {

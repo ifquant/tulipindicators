@@ -3,6 +3,9 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IndicatorError {
+    UnknownIndicator {
+        name: String,
+    },
     InvalidOption {
         indicator: &'static str,
         option: &'static str,
@@ -48,6 +51,7 @@ pub enum IndicatorError {
 impl fmt::Display for IndicatorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnknownIndicator { name } => write!(f, "unknown indicator `{name}`"),
             Self::InvalidOption {
                 indicator,
                 option,

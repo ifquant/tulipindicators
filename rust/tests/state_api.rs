@@ -175,7 +175,7 @@ fn dynamic_state_for_rsi_matches_batch_and_supports_updates() {
     );
     assert_option_real_eq(state.latest().map(|values| values[0]), expected_latest);
 
-    state.reset();
+    state.reset().expect("dynamic rsi reset");
     assert_eq!(state.len(), 0);
     assert!(!state.is_ready());
 }
@@ -236,7 +236,7 @@ fn dynamic_state_for_dm_matches_batch_and_supports_updates() {
         expected_latest,
     );
 
-    state.reset();
+    state.reset().expect("dynamic dm reset");
     assert_eq!(state.len(), 0);
     assert!(!state.is_ready());
 }
@@ -280,7 +280,7 @@ fn dynamic_state_falls_back_to_batch_for_ma() {
     );
     assert_option_real_eq(state.latest().map(|values| values[0]), expected_latest);
 
-    state.reset();
+    state.reset().expect("dynamic ma reset");
     assert_eq!(state.len(), 0);
     assert!(!state.is_ready());
 }

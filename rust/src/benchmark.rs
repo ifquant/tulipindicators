@@ -309,12 +309,8 @@ pub fn run_named_benchmarks(
 ) -> Result<Vec<BenchmarkResult>, IndicatorError> {
     let mut indicators = Vec::with_capacity(names.len());
     for name in names {
-        let indicator = registry::find(name).ok_or(IndicatorError::InvalidOption {
-            indicator: "benchmark",
-            option: "indicator",
-            value: 0.0,
-            reason: "unknown indicator name in benchmark filter",
-        })?;
+        let indicator = registry::find(name)
+            .ok_or_else(|| IndicatorError::UnknownIndicator { name: name.clone() })?;
         indicators.push(indicator);
     }
     run_indicator_benchmarks(config, indicators)
