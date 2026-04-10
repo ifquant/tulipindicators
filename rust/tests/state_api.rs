@@ -83,8 +83,7 @@ fn high_low_close_series() -> (Vec<Real>, Vec<Real>, Vec<Real>) {
 fn rsi_state_seed_and_indexed_history_match_batch_output() {
     let input = close_series();
     let options = [14.0];
-    let batch = Rsi.run(&[&input], &options).expect("rsi batch");
-    let expected = &batch[0];
+    let expected = Rsi.run_single(&[&input], &options).expect("rsi batch");
 
     let mut state = Rsi::state(&options, expected.len()).expect("rsi state");
     let produced = state.seed(&input).expect("rsi seed");
@@ -141,8 +140,7 @@ fn dm_state_seed_and_indexed_history_match_batch_output() {
 fn dynamic_state_for_rsi_matches_batch_and_supports_updates() {
     let input = close_series();
     let options = [14.0];
-    let batch = Rsi.run(&[&input], &options).expect("rsi batch");
-    let expected = &batch[0];
+    let expected = Rsi.run_single(&[&input], &options).expect("rsi batch");
 
     let mut state = DynamicIndicatorState::from_name("rsi", &options, expected.len())
         .expect("dynamic rsi state");
@@ -172,8 +170,11 @@ fn dynamic_state_for_rsi_matches_batch_and_supports_updates() {
     let next_input = input.last().copied().expect("latest input") + 0.75;
     let mut extended = input.clone();
     extended.push(next_input);
-    let extended_batch = Rsi.run(&[&extended], &options).expect("extended rsi batch");
-    let expected_latest = extended_batch[0].last().copied();
+    let expected_latest = Rsi
+        .run_single(&[&extended], &options)
+        .expect("extended rsi batch")
+        .last()
+        .copied();
     assert_option_real_eq(
         state
             .update(&[next_input])
@@ -268,8 +269,7 @@ fn dynamic_state_falls_back_to_batch_for_ma() {
     let input = close_series();
     let options = [5.0, 0.0];
     let ma = registry::find("ma").expect("ma indicator");
-    let batch = ma.run(&[&input], &options).expect("ma batch");
-    let expected = &batch[0];
+    let expected = ma.run_single(&[&input], &options).expect("ma batch");
 
     let mut state =
         DynamicIndicatorState::from_name("ma", &options, expected.len()).expect("dynamic ma state");
@@ -299,8 +299,11 @@ fn dynamic_state_falls_back_to_batch_for_ma() {
     let next_input = input.last().copied().expect("latest input") + 0.6;
     let mut extended = input.clone();
     extended.push(next_input);
-    let extended_batch = ma.run(&[&extended], &options).expect("extended ma batch");
-    let expected_latest = extended_batch[0].last().copied();
+    let expected_latest = ma
+        .run_single(&[&extended], &options)
+        .expect("extended ma batch")
+        .last()
+        .copied();
     assert_option_real_eq(
         state
             .update(&[next_input])
@@ -319,14 +322,14 @@ fn dynamic_state_falls_back_to_batch_for_ma() {
 fn indicator_state_factory_creates_dynamic_states() {
     let input = close_series();
     let options = [14.0];
-    let batch = Rsi.run(&[&input], &options).expect("rsi batch");
-    let expected = batch[0].last().copied();
+    let batch = Rsi.run_single(&[&input], &options).expect("rsi batch");
+    let expected = batch.last().copied();
 
     let mut state = Rsi
-        .dynamic_state(&options, batch[0].len())
+        .dynamic_state(&options, batch.len())
         .expect("factory dynamic state");
     let produced = state.seed_columns(&[&input]).expect("factory seed");
-    assert_eq!(produced, batch[0].len());
+    assert_eq!(produced, batch.len());
     assert_option_real_eq(state.latest().map(|values| values[0]), expected);
 }
 
@@ -334,8 +337,7 @@ fn indicator_state_factory_creates_dynamic_states() {
 fn ema_state_seed_and_indexed_history_match_batch_output() {
     let input = close_series();
     let options = [12.0];
-    let batch = Ema.run(&[&input], &options).expect("ema batch");
-    let expected = &batch[0];
+    let expected = Ema.run_single(&[&input], &options).expect("ema batch");
 
     let mut state = Ema::state(&options, expected.len()).expect("ema state");
     let produced = state.seed(&input).expect("ema seed");
@@ -352,8 +354,7 @@ fn ema_state_seed_and_indexed_history_match_batch_output() {
 fn sma_state_seed_and_indexed_history_match_batch_output() {
     let input = close_series();
     let options = [10.0];
-    let batch = Sma.run(&[&input], &options).expect("sma batch");
-    let expected = &batch[0];
+    let expected = Sma.run_single(&[&input], &options).expect("sma batch");
 
     let mut state = Sma::state(&options, expected.len()).expect("sma state");
     let produced = state.seed(&input).expect("sma seed");
@@ -370,10 +371,9 @@ fn sma_state_seed_and_indexed_history_match_batch_output() {
 fn atr_state_seed_and_indexed_history_match_batch_output() {
     let (high, low, close) = high_low_close_series();
     let options = [14.0];
-    let batch = Atr
-        .run(&[&high, &low, &close], &options)
+    let expected = Atr
+        .run_single(&[&high, &low, &close], &options)
         .expect("atr batch");
-    let expected = &batch[0];
 
     let inputs: Vec<(Real, Real, Real)> = high
         .iter()
@@ -440,8 +440,9 @@ fn macd_state_seed_and_indexed_history_match_batch_output() {
 fn wilders_state_seed_and_indexed_history_match_batch_output() {
     let input = close_series();
     let options = [14.0];
-    let batch = Wilders.run(&[&input], &options).expect("wilders batch");
-    let expected = &batch[0];
+    let expected = Wilders
+        .run_single(&[&input], &options)
+        .expect("wilders batch");
 
     let mut state = Wilders::state(&options, expected.len()).expect("wilders state");
     let produced = state.seed(&input).expect("wilders seed");
@@ -458,10 +459,9 @@ fn wilders_state_seed_and_indexed_history_match_batch_output() {
 fn natr_state_seed_and_indexed_history_match_batch_output() {
     let (high, low, close) = high_low_close_series();
     let options = [14.0];
-    let batch = Natr
-        .run(&[&high, &low, &close], &options)
+    let expected = Natr
+        .run_single(&[&high, &low, &close], &options)
         .expect("natr batch");
-    let expected = &batch[0];
 
     let inputs: Vec<(Real, Real, Real)> = high
         .iter()
@@ -485,8 +485,7 @@ fn natr_state_seed_and_indexed_history_match_batch_output() {
 fn ppo_state_seed_and_indexed_history_match_batch_output() {
     let input = close_series();
     let options = [12.0, 26.0];
-    let batch = Ppo.run(&[&input], &options).expect("ppo batch");
-    let expected = &batch[0];
+    let expected = Ppo.run_single(&[&input], &options).expect("ppo batch");
 
     let mut state = Ppo::state(&options, expected.len()).expect("ppo state");
     let produced = state.seed(&input).expect("ppo seed");
@@ -543,8 +542,7 @@ fn stoch_state_seed_and_indexed_history_match_batch_output() {
 fn dx_state_seed_and_indexed_history_match_batch_output() {
     let (high, low) = high_low_series();
     let options = [14.0];
-    let batch = Dx.run(&[&high, &low], &options).expect("dx batch");
-    let expected = &batch[0];
+    let expected = Dx.run_single(&[&high, &low], &options).expect("dx batch");
 
     let inputs: Vec<(Real, Real)> = high.iter().copied().zip(low.iter().copied()).collect();
     let mut state = Dx::state(&options, expected.len()).expect("dx state");
@@ -600,8 +598,7 @@ fn di_state_seed_and_indexed_history_match_batch_output() {
 fn adx_state_seed_and_indexed_history_match_batch_output() {
     let (high, low) = high_low_series();
     let options = [14.0];
-    let batch = Adx.run(&[&high, &low], &options).expect("adx batch");
-    let expected = &batch[0];
+    let expected = Adx.run_single(&[&high, &low], &options).expect("adx batch");
 
     let inputs: Vec<(Real, Real)> = high.iter().copied().zip(low.iter().copied()).collect();
     let mut state = Adx::state(&options, expected.len()).expect("adx state");
@@ -619,8 +616,9 @@ fn adx_state_seed_and_indexed_history_match_batch_output() {
 fn adxr_state_seed_and_indexed_history_match_batch_output() {
     let (high, low) = high_low_series();
     let options = [14.0];
-    let batch = Adxr.run(&[&high, &low], &options).expect("adxr batch");
-    let expected = &batch[0];
+    let expected = Adxr
+        .run_single(&[&high, &low], &options)
+        .expect("adxr batch");
 
     let inputs: Vec<(Real, Real)> = high.iter().copied().zip(low.iter().copied()).collect();
     let mut state = Adxr::state(&options, expected.len()).expect("adxr state");
