@@ -3,6 +3,7 @@
 //! The crate keeps the existing high-performance batch layer:
 //!
 //! - [`Indicator::run`]
+//! - [`Indicator::run_single`]
 //! - [`Indicator::run_in_place`]
 //!
 //! On top of that batch layer, it also exposes a stateful incremental API:
@@ -31,6 +32,19 @@
 //! let latest = state.update(106.5);
 //! assert_eq!(latest, state.latest());
 //! let _previous = state.get(1);
+//! # Ok::<(), tulipindicators::IndicatorError>(())
+//! ```
+//!
+//! # Batch single-output example
+//!
+//! ```
+//! use tulipindicators::{Indicator, Real, Rsi};
+//!
+//! let closes: Vec<Real> = vec![
+//!     100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0, 106.0, 105.5,
+//! ];
+//! let values = Rsi.run_single(&[&closes], &[3.0])?;
+//! assert!(!values.is_empty());
 //! # Ok::<(), tulipindicators::IndicatorError>(())
 //! ```
 //!

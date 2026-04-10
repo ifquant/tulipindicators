@@ -43,3 +43,7 @@ path = "rust/tests/talib_missing_benchmark.rs"
 [[test]]
 name = "state_api"
 path = "rust/tests/state_api.rs"
+
+[[test]]
+name = "single_output_api"
+path = "rust/tests/single_output_api.rs"

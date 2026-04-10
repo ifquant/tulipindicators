@@ -15,6 +15,18 @@ pub trait Indicator: Sync {
     fn metadata(&self) -> &'static IndicatorMetadata;
     fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError>;
     fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError>;
+    fn run_single(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+    ) -> Result<Vec<Real>, IndicatorError> {
+        let metadata = self.metadata();
+        validate_single_output(metadata)?;
+        let mut computed = self.run(inputs, options)?;
+        validate_computed_outputs(metadata, &computed)?;
+        Ok(computed.pop().unwrap_or_default())
+    }
+
     fn run_in_place(
         &self,
         inputs: &[&[Real]],
@@ -50,6 +62,14 @@ pub trait IndicatorStream {
     fn metadata(&self) -> &'static IndicatorMetadata;
     fn progress(&self) -> usize;
     fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError>;
+    fn feed_single(&mut self, inputs: &[&[Real]]) -> Result<Vec<Real>, IndicatorError> {
+        let metadata = self.metadata();
+        validate_single_output(metadata)?;
+        let mut computed = self.feed(inputs)?;
+        validate_computed_outputs(metadata, &computed)?;
+        Ok(computed.pop().unwrap_or_default())
+    }
+
     fn feed_in_place(
         &mut self,
         inputs: &[&[Real]],
@@ -86,6 +106,17 @@ pub fn validate_output_slices(
             indicator: metadata.name,
             expected,
             actual: outputs.len(),
+        });
+    }
+    Ok(())
+}
+
+pub fn validate_single_output(metadata: &IndicatorMetadata) -> Result<(), IndicatorError> {
+    if metadata.output_names.len() != 1 {
+        return Err(IndicatorError::WrongOutputCount {
+            indicator: metadata.name,
+            expected: 1,
+            actual: metadata.output_names.len(),
         });
     }
     Ok(())
