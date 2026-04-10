@@ -152,17 +152,6 @@ impl IndicatorState for EmaState {
     type Input = Real;
     type Output = Real;
 
-    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
-        let mut produced = 0usize;
-        for &sample in input {
-            let value = self.update(sample);
-            if value.is_some() {
-                produced += 1;
-            }
-        }
-        Ok(produced)
-    }
-
     fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
         let value = self.stream.update_one(input);
         self.history.push(value);

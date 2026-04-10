@@ -307,16 +307,6 @@ impl IndicatorState for MacdState {
     type Input = Real;
     type Output = (Real, Real, Real);
 
-    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
-        let mut produced = 0usize;
-        for &sample in input {
-            if self.update(sample).is_some() {
-                produced += 1;
-            }
-        }
-        Ok(produced)
-    }
-
     fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
         let value = self.stream.update_one(input);
         if let Some(value) = value {

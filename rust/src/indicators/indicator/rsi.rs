@@ -191,17 +191,6 @@ impl IndicatorState for RsiState {
     type Input = Real;
     type Output = Real;
 
-    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
-        let mut produced = 0usize;
-        for &sample in input {
-            if let Some(value) = self.update(sample) {
-                produced += 1;
-                let _ = value;
-            }
-        }
-        Ok(produced)
-    }
-
     fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
         let output = self.stream.update_one(input);
         if let Some(value) = output {

@@ -269,16 +269,6 @@ impl IndicatorState for StochState {
     type Input = (Real, Real, Real);
     type Output = (Real, Real);
 
-    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
-        let mut produced = 0usize;
-        for &(high, low, close) in input {
-            if self.update((high, low, close)).is_some() {
-                produced += 1;
-            }
-        }
-        Ok(produced)
-    }
-
     fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
         let value = self.stream.update_one(input.0, input.1, input.2);
         if let Some(value) = value {

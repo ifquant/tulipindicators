@@ -7,7 +7,19 @@ pub trait IndicatorState {
     type Input;
     type Output: Clone;
 
-    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError>;
+    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError>
+    where
+        Self::Input: Copy,
+    {
+        let mut produced = 0usize;
+        for &sample in input {
+            if self.update(sample).is_some() {
+                produced += 1;
+            }
+        }
+        Ok(produced)
+    }
+
     fn update(&mut self, input: Self::Input) -> Option<Self::Output>;
     fn latest(&self) -> Option<Self::Output>;
     fn get(&self, index_from_latest: usize) -> Option<Self::Output>;

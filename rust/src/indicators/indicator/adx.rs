@@ -206,16 +206,6 @@ impl IndicatorState for AdxState {
     type Input = (Real, Real);
     type Output = Real;
 
-    fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError> {
-        let mut produced = 0usize;
-        for &(high, low) in input {
-            if self.update((high, low)).is_some() {
-                produced += 1;
-            }
-        }
-        Ok(produced)
-    }
-
     fn update(&mut self, input: Self::Input) -> Option<Self::Output> {
         let output = self.stream.update_one(input.0, input.1);
         if let Some(value) = output {
