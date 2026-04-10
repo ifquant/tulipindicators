@@ -4,6 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
+use crate::indicators::shared::rsi_value;
 use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
@@ -240,15 +241,6 @@ impl IndicatorState for RsiState {
 fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {
     expect_option_count(METADATA.name, options, 1)?;
     parse_usize_option(METADATA.name, options, 0, "period", 1)
-}
-
-fn rsi_value(smooth_up: Real, smooth_down: Real) -> Real {
-    let total = smooth_up + smooth_down;
-    if total == 0.0 {
-        0.0
-    } else {
-        100.0 * (smooth_up / total)
-    }
 }
 
 fn run_rsi_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {

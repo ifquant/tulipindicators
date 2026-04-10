@@ -4,7 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
-use crate::indicators::shared::DirectionalIndexState;
+use crate::indicators::shared::{true_range, DirectionalIndexState};
 use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
@@ -139,19 +139,6 @@ fn directional_movement(
     } else {
         (0.0, 0.0)
     }
-}
-
-fn true_range(high: Real, low: Real, previous_close: Real) -> Real {
-    let ych = (high - previous_close).abs();
-    let ycl = (low - previous_close).abs();
-    let mut value = high - low;
-    if ych > value {
-        value = ych;
-    }
-    if ycl > value {
-        value = ycl;
-    }
-    value
 }
 
 struct DiStream {

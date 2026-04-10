@@ -4,6 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
+use crate::indicators::shared::true_range;
 use crate::state::{IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
@@ -249,19 +250,6 @@ impl IndicatorState for AtrState {
 fn parse_period(options: &[Real]) -> Result<usize, IndicatorError> {
     expect_option_count(METADATA.name, options, 1)?;
     parse_usize_option(METADATA.name, options, 0, "period", 1)
-}
-
-fn true_range(high: Real, low: Real, previous_close: Real) -> Real {
-    let ych = (high - previous_close).abs();
-    let ycl = (low - previous_close).abs();
-    let mut value = high - low;
-    if ych > value {
-        value = ych;
-    }
-    if ycl > value {
-        value = ycl;
-    }
-    value
 }
 
 fn run_atr_batch(
