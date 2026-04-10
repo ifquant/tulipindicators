@@ -1,0 +1,723 @@
+use super::parse_positive_period;
+use crate::core::error::IndicatorError;
+use crate::core::indicator::{
+    ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
+};
+use crate::core::types::{IndicatorCategory, Real};
+use crate::core::validation::single_input;
+use crate::indicators::shared::{ExtremaKind, MonotonicQueue};
+
+const MAX_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "max",
+    full_name: "Maximum In Period",
+    category: IndicatorCategory::Math,
+    input_names: &["real"],
+    option_names: &["period"],
+    output_names: &["max"],
+};
+
+const MIDPOINT_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "midpoint",
+    full_name: "Midpoint Over Period",
+    category: IndicatorCategory::Math,
+    input_names: &["real"],
+    option_names: &["period"],
+    output_names: &["midpoint"],
+};
+
+const MAXINDEX_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "maxindex",
+    full_name: "Maximum Index In Period",
+    category: IndicatorCategory::Math,
+    input_names: &["real"],
+    option_names: &["period"],
+    output_names: &["maxindex"],
+};
+
+const MIN_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "min",
+    full_name: "Minimum In Period",
+    category: IndicatorCategory::Math,
+    input_names: &["real"],
+    option_names: &["period"],
+    output_names: &["min"],
+};
+
+const MININDEX_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "minindex",
+    full_name: "Minimum Index In Period",
+    category: IndicatorCategory::Math,
+    input_names: &["real"],
+    option_names: &["period"],
+    output_names: &["minindex"],
+};
+
+const MINMAX_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "minmax",
+    full_name: "Minimum And Maximum In Period",
+    category: IndicatorCategory::Math,
+    input_names: &["real"],
+    option_names: &["period"],
+    output_names: &["min", "max"],
+};
+
+const MINMAXINDEX_METADATA: IndicatorMetadata = IndicatorMetadata {
+    name: "minmaxindex",
+    full_name: "Minimum And Maximum Index In Period",
+    category: IndicatorCategory::Math,
+    input_names: &["real"],
+    option_names: &["period"],
+    output_names: &["minindex", "maxindex"],
+};
+
+#[derive(Debug, Clone, Copy)]
+pub struct MidPoint;
+#[derive(Debug, Clone, Copy)]
+pub struct Max;
+#[derive(Debug, Clone, Copy)]
+pub struct Min;
+#[derive(Debug, Clone, Copy)]
+pub struct MaxIndex;
+#[derive(Debug, Clone, Copy)]
+pub struct MinIndex;
+#[derive(Debug, Clone, Copy)]
+pub struct MinMax;
+#[derive(Debug, Clone, Copy)]
+pub struct MinMaxIndex;
+
+impl Indicator for MidPoint {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MIDPOINT_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        Ok(parse_positive_period(MIDPOINT_METADATA.name, options)? - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MIDPOINT_METADATA.name, inputs)?;
+        let period = parse_positive_period(MIDPOINT_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new()]);
+        }
+
+        let mut output = vec![0.0; output_len];
+        let produced = run_midpoint_batch(input, period, &mut output);
+        debug_assert_eq!(produced, output_len);
+        Ok(vec![output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(MIDPOINT_METADATA.name, inputs)?;
+        let period = parse_positive_period(MIDPOINT_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&MIDPOINT_METADATA, outputs, 1)?;
+        ensure_output_len(&MIDPOINT_METADATA, outputs[0].len(), output_len, 0)?;
+        Ok(run_midpoint_batch(
+            input,
+            period,
+            &mut outputs[0][..output_len],
+        ))
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_positive_period(MIDPOINT_METADATA.name, options)?;
+        Ok(Some(Box::new(MidPointStream::new(period))))
+    }
+}
+
+struct MidPointStream {
+    period: usize,
+    progress: usize,
+    max_queue: MonotonicQueue,
+    min_queue: MonotonicQueue,
+}
+
+impl MidPointStream {
+    fn new(period: usize) -> Self {
+        Self {
+            period,
+            progress: 0,
+            max_queue: MonotonicQueue::new(ExtremaKind::Max),
+            min_queue: MonotonicQueue::new(ExtremaKind::Min),
+        }
+    }
+}
+
+impl IndicatorStream for MidPointStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MIDPOINT_METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.progress
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MIDPOINT_METADATA.name, inputs)?;
+        let mut output = Vec::with_capacity(input.len());
+
+        for &sample in input {
+            let index = self.progress;
+            self.max_queue.push(index, sample);
+            self.min_queue.push(index, sample);
+            let window_start = index.saturating_add(1).saturating_sub(self.period);
+            self.max_queue.evict_before(window_start);
+            self.min_queue.evict_before(window_start);
+            if index + 1 >= self.period {
+                output.push((self.max_queue.front_value() + self.min_queue.front_value()) * 0.5);
+            }
+            self.progress += 1;
+        }
+
+        Ok(vec![output])
+    }
+}
+
+fn run_midpoint_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
+    if input.len() < period {
+        return 0;
+    }
+
+    let mut maxi = -1isize;
+    let mut mini = -1isize;
+    let mut max = input[0];
+    let mut min = input[0];
+    let mut out_index = 0usize;
+
+    for (trail, index) in ((period - 1)..input.len()).enumerate() {
+        let value = input[index];
+
+        if maxi < trail as isize {
+            maxi = trail as isize;
+            max = input[trail];
+            let mut scan = trail + 1;
+            while scan <= index {
+                let sample = input[scan];
+                if sample >= max {
+                    max = sample;
+                    maxi = scan as isize;
+                }
+                scan += 1;
+            }
+        } else if value >= max {
+            max = value;
+            maxi = index as isize;
+        }
+
+        if mini < trail as isize {
+            mini = trail as isize;
+            min = input[trail];
+            let mut scan = trail + 1;
+            while scan <= index {
+                let sample = input[scan];
+                if sample <= min {
+                    min = sample;
+                    mini = scan as isize;
+                }
+                scan += 1;
+            }
+        } else if value <= min {
+            min = value;
+            mini = index as isize;
+        }
+
+        output[out_index] = (max + min) * 0.5;
+        out_index += 1;
+    }
+
+    out_index
+}
+
+fn run_extrema(
+    metadata: &'static IndicatorMetadata,
+    inputs: &[&[Real]],
+    options: &[Real],
+    kind: ExtremaKind,
+) -> Result<Vec<Vec<Real>>, IndicatorError> {
+    let input = single_input(metadata.name, inputs)?;
+    let period = parse_positive_period(metadata.name, options)?;
+    let lookback = period - 1;
+    let mut output = Vec::with_capacity(input.len().saturating_sub(lookback));
+
+    if input.len() <= lookback {
+        return Ok(vec![output]);
+    }
+
+    let mut queue = MonotonicQueue::new(kind);
+    for (index, &sample) in input.iter().enumerate() {
+        queue.push(index, sample);
+        if index + 1 >= period {
+            queue.evict_before(index + 1 - period);
+            output.push(queue.front_value());
+        }
+    }
+
+    Ok(vec![output])
+}
+
+fn run_extrema_index(
+    metadata: &'static IndicatorMetadata,
+    inputs: &[&[Real]],
+    options: &[Real],
+    kind: ExtremaKind,
+) -> Result<Vec<Vec<Real>>, IndicatorError> {
+    let input = single_input(metadata.name, inputs)?;
+    let period = parse_positive_period(metadata.name, options)?;
+    let lookback = period - 1;
+    let mut output = Vec::with_capacity(input.len().saturating_sub(lookback));
+
+    if input.len() <= lookback {
+        return Ok(vec![output]);
+    }
+
+    let mut queue = MonotonicQueue::new(kind);
+    for (index, &sample) in input.iter().enumerate() {
+        queue.push(index, sample);
+        if index + 1 >= period {
+            queue.evict_before(index + 1 - period);
+            output.push(queue.front_index() as Real);
+        }
+    }
+
+    Ok(vec![output])
+}
+
+struct ExtremaStream {
+    metadata: &'static IndicatorMetadata,
+    period: usize,
+    index: usize,
+    queue: MonotonicQueue,
+}
+
+impl IndicatorStream for ExtremaStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        self.metadata
+    }
+
+    fn progress(&self) -> usize {
+        self.index
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(self.metadata.name, inputs)?;
+        let mut output = Vec::with_capacity(input.len());
+
+        for &sample in input {
+            self.queue.push(self.index, sample);
+            self.index += 1;
+            if self.index >= self.period {
+                self.queue.evict_before(self.index - self.period);
+                output.push(self.queue.front_value());
+            }
+        }
+
+        Ok(vec![output])
+    }
+}
+
+struct ExtremaIndexStream {
+    metadata: &'static IndicatorMetadata,
+    period: usize,
+    index: usize,
+    queue: MonotonicQueue,
+}
+
+impl IndicatorStream for ExtremaIndexStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        self.metadata
+    }
+
+    fn progress(&self) -> usize {
+        self.index
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(self.metadata.name, inputs)?;
+        let mut output = Vec::with_capacity(input.len());
+
+        for &sample in input {
+            self.queue.push(self.index, sample);
+            self.index += 1;
+            if self.index >= self.period {
+                self.queue.evict_before(self.index - self.period);
+                output.push(self.queue.front_index() as Real);
+            }
+        }
+
+        Ok(vec![output])
+    }
+}
+
+fn run_minmax_batch(
+    input: &[Real],
+    period: usize,
+    min_out: &mut [Real],
+    max_out: &mut [Real],
+) -> usize {
+    if input.len() < period {
+        return 0;
+    }
+
+    let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
+    let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+    let mut out_index = 0usize;
+
+    for (index, &sample) in input.iter().enumerate() {
+        max_queue.push(index, sample);
+        min_queue.push(index, sample);
+        if index + 1 >= period {
+            max_queue.evict_before(index + 1 - period);
+            min_queue.evict_before(index + 1 - period);
+            min_out[out_index] = min_queue.front_value();
+            max_out[out_index] = max_queue.front_value();
+            out_index += 1;
+        }
+    }
+
+    out_index
+}
+
+fn run_minmaxindex_batch(
+    input: &[Real],
+    period: usize,
+    min_out: &mut [Real],
+    max_out: &mut [Real],
+) -> usize {
+    if input.len() < period {
+        return 0;
+    }
+
+    let mut max_queue = MonotonicQueue::new(ExtremaKind::Max);
+    let mut min_queue = MonotonicQueue::new(ExtremaKind::Min);
+    let mut out_index = 0usize;
+
+    for (index, &sample) in input.iter().enumerate() {
+        max_queue.push(index, sample);
+        min_queue.push(index, sample);
+        if index + 1 >= period {
+            max_queue.evict_before(index + 1 - period);
+            min_queue.evict_before(index + 1 - period);
+            min_out[out_index] = min_queue.front_index() as Real;
+            max_out[out_index] = max_queue.front_index() as Real;
+            out_index += 1;
+        }
+    }
+
+    out_index
+}
+
+struct MinMaxStream {
+    period: usize,
+    index: usize,
+    min_queue: MonotonicQueue,
+    max_queue: MonotonicQueue,
+}
+
+impl IndicatorStream for MinMaxStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MINMAX_METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.index
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MINMAX_METADATA.name, inputs)?;
+        let mut min_output = Vec::with_capacity(input.len());
+        let mut max_output = Vec::with_capacity(input.len());
+
+        for &sample in input {
+            self.max_queue.push(self.index, sample);
+            self.min_queue.push(self.index, sample);
+            self.index += 1;
+            if self.index >= self.period {
+                self.max_queue.evict_before(self.index - self.period);
+                self.min_queue.evict_before(self.index - self.period);
+                min_output.push(self.min_queue.front_value());
+                max_output.push(self.max_queue.front_value());
+            }
+        }
+
+        Ok(vec![min_output, max_output])
+    }
+}
+
+struct MinMaxIndexStream {
+    period: usize,
+    index: usize,
+    min_queue: MonotonicQueue,
+    max_queue: MonotonicQueue,
+}
+
+impl IndicatorStream for MinMaxIndexStream {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MINMAXINDEX_METADATA
+    }
+
+    fn progress(&self) -> usize {
+        self.index
+    }
+
+    fn feed(&mut self, inputs: &[&[Real]]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MINMAXINDEX_METADATA.name, inputs)?;
+        let mut min_output = Vec::with_capacity(input.len());
+        let mut max_output = Vec::with_capacity(input.len());
+
+        for &sample in input {
+            self.max_queue.push(self.index, sample);
+            self.min_queue.push(self.index, sample);
+            self.index += 1;
+            if self.index >= self.period {
+                self.max_queue.evict_before(self.index - self.period);
+                self.min_queue.evict_before(self.index - self.period);
+                min_output.push(self.min_queue.front_index() as Real);
+                max_output.push(self.max_queue.front_index() as Real);
+            }
+        }
+
+        Ok(vec![min_output, max_output])
+    }
+}
+
+impl Indicator for Max {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MAX_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        let period = parse_positive_period(MAX_METADATA.name, options)?;
+        Ok(period - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        run_extrema(&MAX_METADATA, inputs, options, ExtremaKind::Max)
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_positive_period(MAX_METADATA.name, options)?;
+        Ok(Some(Box::new(ExtremaStream {
+            metadata: &MAX_METADATA,
+            period,
+            index: 0,
+            queue: MonotonicQueue::new(ExtremaKind::Max),
+        })))
+    }
+}
+
+impl Indicator for Min {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MIN_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        let period = parse_positive_period(MIN_METADATA.name, options)?;
+        Ok(period - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        run_extrema(&MIN_METADATA, inputs, options, ExtremaKind::Min)
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_positive_period(MIN_METADATA.name, options)?;
+        Ok(Some(Box::new(ExtremaStream {
+            metadata: &MIN_METADATA,
+            period,
+            index: 0,
+            queue: MonotonicQueue::new(ExtremaKind::Min),
+        })))
+    }
+}
+
+impl Indicator for MaxIndex {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MAXINDEX_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        let period = parse_positive_period(MAXINDEX_METADATA.name, options)?;
+        Ok(period - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        run_extrema_index(&MAXINDEX_METADATA, inputs, options, ExtremaKind::Max)
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_positive_period(MAXINDEX_METADATA.name, options)?;
+        Ok(Some(Box::new(ExtremaIndexStream {
+            metadata: &MAXINDEX_METADATA,
+            period,
+            index: 0,
+            queue: MonotonicQueue::new(ExtremaKind::Max),
+        })))
+    }
+}
+
+impl Indicator for MinIndex {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MININDEX_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        let period = parse_positive_period(MININDEX_METADATA.name, options)?;
+        Ok(period - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        run_extrema_index(&MININDEX_METADATA, inputs, options, ExtremaKind::Min)
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_positive_period(MININDEX_METADATA.name, options)?;
+        Ok(Some(Box::new(ExtremaIndexStream {
+            metadata: &MININDEX_METADATA,
+            period,
+            index: 0,
+            queue: MonotonicQueue::new(ExtremaKind::Min),
+        })))
+    }
+}
+
+impl Indicator for MinMax {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MINMAX_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        let period = parse_positive_period(MINMAX_METADATA.name, options)?;
+        Ok(period - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MINMAX_METADATA.name, inputs)?;
+        let period = parse_positive_period(MINMAX_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new(), Vec::new()]);
+        }
+
+        let mut min_output = vec![0.0; output_len];
+        let mut max_output = vec![0.0; output_len];
+        let produced = run_minmax_batch(input, period, &mut min_output, &mut max_output);
+        debug_assert_eq!(produced, output_len);
+        Ok(vec![min_output, max_output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(MINMAX_METADATA.name, inputs)?;
+        let period = parse_positive_period(MINMAX_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&MINMAX_METADATA, outputs, 2)?;
+        ensure_output_len(&MINMAX_METADATA, outputs[0].len(), output_len, 0)?;
+        ensure_output_len(&MINMAX_METADATA, outputs[1].len(), output_len, 1)?;
+        let (min_outputs, max_outputs) = outputs.split_at_mut(1);
+        Ok(run_minmax_batch(
+            input,
+            period,
+            &mut min_outputs[0][..output_len],
+            &mut max_outputs[0][..output_len],
+        ))
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_positive_period(MINMAX_METADATA.name, options)?;
+        Ok(Some(Box::new(MinMaxStream {
+            period,
+            index: 0,
+            min_queue: MonotonicQueue::new(ExtremaKind::Min),
+            max_queue: MonotonicQueue::new(ExtremaKind::Max),
+        })))
+    }
+}
+
+impl Indicator for MinMaxIndex {
+    fn metadata(&self) -> &'static IndicatorMetadata {
+        &MINMAXINDEX_METADATA
+    }
+
+    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
+        let period = parse_positive_period(MINMAXINDEX_METADATA.name, options)?;
+        Ok(period - 1)
+    }
+
+    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
+        let input = single_input(MINMAXINDEX_METADATA.name, inputs)?;
+        let period = parse_positive_period(MINMAXINDEX_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        if output_len == 0 {
+            return Ok(vec![Vec::new(), Vec::new()]);
+        }
+
+        let mut min_output = vec![0.0; output_len];
+        let mut max_output = vec![0.0; output_len];
+        let produced = run_minmaxindex_batch(input, period, &mut min_output, &mut max_output);
+        debug_assert_eq!(produced, output_len);
+        Ok(vec![min_output, max_output])
+    }
+
+    fn run_in_place(
+        &self,
+        inputs: &[&[Real]],
+        options: &[Real],
+        outputs: &mut [&mut [Real]],
+    ) -> Result<usize, IndicatorError> {
+        let input = single_input(MINMAXINDEX_METADATA.name, inputs)?;
+        let period = parse_positive_period(MINMAXINDEX_METADATA.name, options)?;
+        let output_len = input.len().saturating_sub(period - 1);
+        validate_output_slices(&MINMAXINDEX_METADATA, outputs, 2)?;
+        ensure_output_len(&MINMAXINDEX_METADATA, outputs[0].len(), output_len, 0)?;
+        ensure_output_len(&MINMAXINDEX_METADATA, outputs[1].len(), output_len, 1)?;
+        let (min_outputs, max_outputs) = outputs.split_at_mut(1);
+        Ok(run_minmaxindex_batch(
+            input,
+            period,
+            &mut min_outputs[0][..output_len],
+            &mut max_outputs[0][..output_len],
+        ))
+    }
+
+    fn create_stream(
+        &self,
+        options: &[Real],
+    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
+        let period = parse_positive_period(MINMAXINDEX_METADATA.name, options)?;
+        Ok(Some(Box::new(MinMaxIndexStream {
+            period,
+            index: 0,
+            min_queue: MonotonicQueue::new(ExtremaKind::Min),
+            max_queue: MonotonicQueue::new(ExtremaKind::Max),
+        })))
+    }
+}
