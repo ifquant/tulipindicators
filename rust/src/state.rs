@@ -77,25 +77,25 @@ impl<T: Clone> RingHistory<T> {
         }
     }
 
-    pub(crate) fn latest(&self) -> Option<T> {
+    pub(crate) fn latest(&self) -> Option<&T> {
         if self.buf.is_empty() {
             None
         } else {
-            Some(self.buf[self.head].clone())
+            Some(&self.buf[self.head])
         }
     }
 
-    pub(crate) fn get(&self, index_from_latest: usize) -> Option<T> {
+    pub(crate) fn get(&self, index_from_latest: usize) -> Option<&T> {
         if index_from_latest >= self.buf.len() {
             return None;
         }
 
         if self.buf.len() < self.capacity {
             let idx = self.buf.len() - 1 - index_from_latest;
-            Some(self.buf[idx].clone())
+            Some(&self.buf[idx])
         } else {
             let idx = (self.head + self.capacity - index_from_latest) % self.capacity;
-            Some(self.buf[idx].clone())
+            Some(&self.buf[idx])
         }
     }
 
@@ -274,18 +274,26 @@ impl DynamicIndicatorState {
                 if produced == 0 {
                     Ok(None)
                 } else {
-                    Ok(self.latest())
+                    Ok(self.latest_ref().map(<[Real]>::to_vec))
                 }
             }
         }
     }
 
+    pub fn latest_ref(&self) -> Option<&[Real]> {
+        self.history.latest().map(Vec::as_slice)
+    }
+
     pub fn latest(&self) -> Option<Vec<Real>> {
-        self.history.latest()
+        self.latest_ref().map(<[Real]>::to_vec)
+    }
+
+    pub fn get_ref(&self, index_from_latest: usize) -> Option<&[Real]> {
+        self.history.get(index_from_latest).map(Vec::as_slice)
     }
 
     pub fn get(&self, index_from_latest: usize) -> Option<Vec<Real>> {
-        self.history.get(index_from_latest)
+        self.get_ref(index_from_latest).map(<[Real]>::to_vec)
     }
 
     pub fn len(&self) -> usize {
@@ -301,7 +309,7 @@ impl DynamicIndicatorState {
     }
 
     pub fn is_ready(&self) -> bool {
-        self.history.latest().is_some()
+        self.latest_ref().is_some()
     }
 
     pub fn reset(&mut self) -> Result<(), IndicatorError> {

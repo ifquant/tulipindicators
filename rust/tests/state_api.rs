@@ -153,10 +153,18 @@ fn dynamic_state_for_rsi_matches_batch_and_supports_updates() {
         state.latest().map(|values| values[0]),
         expected.last().copied(),
     );
+    assert_option_real_eq(
+        state.latest_ref().map(|values| values[0]),
+        expected.last().copied(),
+    );
 
     for index in 0..expected.len() {
         assert_option_real_eq(
             state.get(index).map(|values| values[0]),
+            Some(expected[expected.len() - 1 - index]),
+        );
+        assert_option_real_eq(
+            state.get_ref(index).map(|values| values[0]),
             Some(expected[expected.len() - 1 - index]),
         );
     }
@@ -200,10 +208,24 @@ fn dynamic_state_for_dm_matches_batch_and_supports_updates() {
             *expected_minus.last().expect("minus latest"),
         )),
     );
+    assert_option_pair_eq(
+        state.latest_ref().map(|values| (values[0], values[1])),
+        Some((
+            *expected_plus.last().expect("plus latest"),
+            *expected_minus.last().expect("minus latest"),
+        )),
+    );
 
     for index in 0..expected_plus.len() {
         assert_option_pair_eq(
             state.get(index).map(|values| (values[0], values[1])),
+            Some((
+                expected_plus[expected_plus.len() - 1 - index],
+                expected_minus[expected_minus.len() - 1 - index],
+            )),
+        );
+        assert_option_pair_eq(
+            state.get_ref(index).map(|values| (values[0], values[1])),
             Some((
                 expected_plus[expected_plus.len() - 1 - index],
                 expected_minus[expected_minus.len() - 1 - index],
@@ -258,10 +280,18 @@ fn dynamic_state_falls_back_to_batch_for_ma() {
         state.latest().map(|values| values[0]),
         expected.last().copied(),
     );
+    assert_option_real_eq(
+        state.latest_ref().map(|values| values[0]),
+        expected.last().copied(),
+    );
 
     for index in 0..expected.len() {
         assert_option_real_eq(
             state.get(index).map(|values| values[0]),
+            Some(expected[expected.len() - 1 - index]),
+        );
+        assert_option_real_eq(
+            state.get_ref(index).map(|values| values[0]),
             Some(expected[expected.len() - 1 - index]),
         );
     }

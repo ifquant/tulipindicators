@@ -209,11 +209,11 @@ impl IndicatorState for AtrState {
     }
 
     fn latest(&self) -> Option<Self::Output> {
-        self.history.latest()
+        self.history.latest().cloned()
     }
 
     fn get(&self, index_from_latest: usize) -> Option<Self::Output> {
-        self.history.get(index_from_latest)
+        self.history.get(index_from_latest).cloned()
     }
 
     fn len(&self) -> usize {

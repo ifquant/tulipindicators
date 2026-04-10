@@ -52,6 +52,7 @@
 //! by_factory.seed_columns(&[&closes])?;
 //! let _ = by_factory.update(&next)?;
 //! assert_eq!(by_factory.latest(), by_name.latest());
+//! assert_eq!(by_factory.latest_ref(), by_name.latest_ref());
 //! # Ok::<(), tulipindicators::IndicatorError>(())
 //! ```
 //!
