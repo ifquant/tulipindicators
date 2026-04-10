@@ -398,67 +398,14 @@ define_unary_indicator!(
     "exp",
     exp_op
 );
-const FLOOR_METADATA: IndicatorMetadata = IndicatorMetadata {
-    name: "floor",
-    full_name: "Vector Floor",
-    category: IndicatorCategory::Simple,
-    input_names: &["real"],
-    option_names: &[],
-    output_names: &["floor"],
-};
-
-#[derive(Debug, Clone, Copy)]
-pub struct Floor;
-
-impl Indicator for Floor {
-    fn metadata(&self) -> &'static IndicatorMetadata {
-        &FLOOR_METADATA
-    }
-
-    fn lookback(&self, options: &[Real]) -> Result<usize, IndicatorError> {
-        expect_option_count(FLOOR_METADATA.name, options, 0)?;
-        Ok(0)
-    }
-
-    fn run(&self, inputs: &[&[Real]], options: &[Real]) -> Result<Vec<Vec<Real>>, IndicatorError> {
-        expect_option_count(FLOOR_METADATA.name, options, 0)?;
-        let input = single_input(FLOOR_METADATA.name, inputs)?;
-        let mut output = vec![0.0; input.len()];
-        for index in 0..input.len() {
-            output[index] = input[index].floor();
-        }
-        Ok(vec![output])
-    }
-
-    fn run_in_place(
-        &self,
-        inputs: &[&[Real]],
-        options: &[Real],
-        outputs: &mut [&mut [Real]],
-    ) -> Result<usize, IndicatorError> {
-        expect_option_count(FLOOR_METADATA.name, options, 0)?;
-        let input = single_input(FLOOR_METADATA.name, inputs)?;
-        validate_output_slices(&FLOOR_METADATA, outputs, 1)?;
-        ensure_output_len(&FLOOR_METADATA, outputs[0].len(), input.len(), 0)?;
-
-        for index in 0..input.len() {
-            outputs[0][index] = input[index].floor();
-        }
-
-        Ok(input.len())
-    }
-
-    fn create_stream(
-        &self,
-        options: &[Real],
-    ) -> Result<Option<Box<dyn IndicatorStream>>, IndicatorError> {
-        expect_option_count(FLOOR_METADATA.name, options, 0)?;
-        Ok(Some(Box::new(UnaryTransformStream::new(
-            &FLOOR_METADATA,
-            floor_op,
-        ))))
-    }
-}
+define_unary_indicator!(
+    Floor,
+    FLOOR_METADATA,
+    "floor",
+    "Vector Floor",
+    "floor",
+    floor_op
+);
 define_unary_indicator!(Ln, LN_METADATA, "ln", "Vector Natural Log", "ln", ln_op);
 define_unary_indicator!(
     Log10,
