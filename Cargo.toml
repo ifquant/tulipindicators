@@ -47,3 +47,7 @@ path = "rust/tests/state_api.rs"
 [[test]]
 name = "single_output_api"
 path = "rust/tests/single_output_api.rs"
+
+[[test]]
+name = "run_single_style"
+path = "rust/tests/run_single_style.rs"
