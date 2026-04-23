@@ -1,3 +1,11 @@
+//! Directional Movement.
+//!
+//! Inputs are `high` and `low` series plus one `period` option. The indicator
+//! returns a pair of smoothed directional-movement series, `plus_dm` and
+//! `minus_dm`, with the first result arriving after the initial `period - 1`
+//! bar warmup. `Dm::state` wraps the same logic in a typed `(Real, Real) ->
+//! (Real, Real)` history buffer for incremental consumers.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -16,10 +24,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["plus_dm", "minus_dm"],
 };
 
+/// Typed DM indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Dm;
 
 impl Dm {
+    /// Build a typed DM state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<DmState, IndicatorError> {
         DmState::new(options, history_capacity)
     }
@@ -111,6 +121,8 @@ fn run_dm_batch(
         return 0;
     }
 
+    // Batch execution keeps the directional sums hot and writes both outputs
+    // together so the paired series stay aligned without extra buffering.
     let per = (period.saturating_sub(1)) as Real / period as Real;
     let mut dmup = 0.0;
     let mut dmdown = 0.0;
@@ -210,6 +222,7 @@ impl IndicatorStream for DmStream {
     }
 }
 
+/// Typed DM state wrapper with bounded history for incremental callers.
 pub struct DmState {
     period: usize,
     stream: DmStream,
@@ -217,6 +230,7 @@ pub struct DmState {
 }
 
 impl DmState {
+    /// Construct the typed DM state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;

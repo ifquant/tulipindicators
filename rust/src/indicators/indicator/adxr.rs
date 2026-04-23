@@ -1,3 +1,11 @@
+//! Average Directional Movement Rating.
+//!
+//! Inputs are `high` and `low` series plus one `period` option. The output is a
+//! single `adxr` series formed from the current ADX and the ADX value from
+//! `period - 1` bars ago, so the lookback is `(period - 1) * 3`. `Adxr::state`
+//! wraps the same typed `(Real, Real) -> Real` flow with a bounded history
+//! buffer for incremental callers.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -19,10 +27,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["adxr"],
 };
 
+/// Typed ADXR indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Adxr;
 
 impl Adxr {
+    /// Build a typed ADXR state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<AdxrState, IndicatorError> {
         AdxrState::new(options, history_capacity)
     }
@@ -81,6 +91,8 @@ impl Indicator for Adxr {
             return Ok(0);
         }
 
+        // Batch mode keeps a short ring of prior ADX values so ADXR can pair
+        // the current average with the one from `period - 1` bars ago.
         let per = (period - 1) as Real / period as Real;
         let invper = 1.0 / period as Real;
 
@@ -205,6 +217,7 @@ impl IndicatorStream for AdxrStream {
     }
 }
 
+/// Typed ADXR state wrapper with bounded history for incremental callers.
 pub struct AdxrState {
     period: usize,
     stream: AdxrStream,
@@ -212,6 +225,7 @@ pub struct AdxrState {
 }
 
 impl AdxrState {
+    /// Construct the typed ADXR state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;

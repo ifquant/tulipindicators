@@ -1,3 +1,12 @@
+//! Wilders Smoothing.
+//!
+//! Input is one `real` series with a single `period` option. The output is one
+//! `wilders` series that begins after `period - 1` bars, once the initial
+//! average is seeded and the recursive smoother can take over. `Wilders::state`
+//! wraps the same typed `Real -> Real` flow in a bounded history buffer. The
+//! batch kernel keeps its pointer walk tight so the warmup and smoothing path
+//! stay allocation-free.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -15,10 +24,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["wilders"],
 };
 
+/// Typed Wilders indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Wilders;
 
 impl Wilders {
+    /// Build a typed Wilders state wrapper with a bounded history buffer.
     pub fn state(
         options: &[Real],
         history_capacity: usize,
@@ -154,6 +165,7 @@ impl IndicatorStream for WildersStream {
     }
 }
 
+/// Typed Wilders state wrapper with bounded history for incremental callers.
 pub struct WildersState {
     period: usize,
     stream: WildersStream,
@@ -161,6 +173,7 @@ pub struct WildersState {
 }
 
 impl WildersState {
+    /// Construct the typed Wilders state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;

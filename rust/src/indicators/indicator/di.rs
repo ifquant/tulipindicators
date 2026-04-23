@@ -1,3 +1,11 @@
+//! Directional Indicator.
+//!
+//! Inputs are `high`, `low`, and `close` series plus one `period` option. The
+//! output is a pair of normalized directional series, `plus_di` and
+//! `minus_di`, that begin after the first `period - 1` bars. `Di::state`
+//! exposes the same `(Real, Real, Real) -> (Real, Real)` flow with a typed
+//! history wrapper so incremental callers can query recent values.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -16,10 +24,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["plus_di", "minus_di"],
 };
 
+/// Typed DI indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Di;
 
 impl Di {
+    /// Build a typed DI state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<DiState, IndicatorError> {
         DiState::new(options, history_capacity)
     }
@@ -93,6 +103,8 @@ fn run_di_batch(
         return 0;
     }
 
+    // The batch kernel keeps ATR and directional movement together so the
+    // normalized outputs stay aligned without extra temporary storage.
     let per = (period.saturating_sub(1)) as Real / period as Real;
     let mut atr = 0.0;
     let mut dmup = 0.0;
@@ -189,6 +201,7 @@ impl IndicatorStream for DiStream {
     }
 }
 
+/// Typed DI state wrapper with bounded history for incremental callers.
 pub struct DiState {
     period: usize,
     stream: DiStream,
@@ -196,6 +209,7 @@ pub struct DiState {
 }
 
 impl DiState {
+    /// Construct the typed DI state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;

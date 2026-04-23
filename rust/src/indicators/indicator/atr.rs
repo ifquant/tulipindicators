@@ -1,3 +1,11 @@
+//! Average True Range.
+//!
+//! This indicator consumes `high`, `low`, and `close` series plus a `period`
+//! option and returns a single `atr` series. The first output appears after
+//! `period - 1` bars because the initial ATR needs the previous close to form
+//! the first true range. `Atr::state` wraps the same warmup and smoothing logic
+//! in a typed `(Real, Real, Real) -> Real` history buffer.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -16,10 +24,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["atr"],
 };
 
+/// Typed ATR indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Atr;
 
 impl Atr {
+    /// Build a typed ATR state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<AtrState, IndicatorError> {
         AtrState::new(options, history_capacity)
     }
@@ -177,6 +187,7 @@ impl IndicatorStream for AtrStream {
     }
 }
 
+/// Typed ATR state wrapper with bounded history for incremental callers.
 pub struct AtrState {
     period: usize,
     stream: AtrStream,
@@ -184,6 +195,7 @@ pub struct AtrState {
 }
 
 impl AtrState {
+    /// Construct the typed ATR state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;

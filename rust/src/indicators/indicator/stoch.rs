@@ -1,3 +1,11 @@
+//! Stochastic Oscillator.
+//!
+//! Inputs are `high`, `low`, and `close` series plus `k_period`,
+//! `k_slowing_period`, and `d_period` options. The output is a pair of series,
+//! `stoch_k` and `stoch_d`, whose lookback is `k_period + k_slowing_period +
+//! d_period - 3`. `Stoch::state` wraps the same typed `(Real, Real, Real) ->
+//! (Real, Real)` flow in a bounded history buffer for incremental callers.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -16,10 +24,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["stoch_k", "stoch_d"],
 };
 
+/// Typed stochastic oscillator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Stoch;
 
 impl Stoch {
+    /// Build a typed stochastic state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<StochState, IndicatorError> {
         StochState::new(options, history_capacity)
     }
@@ -99,6 +109,8 @@ fn run_stoch_batch(
         return 0;
     }
 
+    // The batch kernel keeps rolling extrema and both smoothing sums in a
+    // single pass so the two outputs stay aligned without extra buffers.
     let kper = 1.0 / k_slow as Real;
     let dper = 1.0 / d_period as Real;
 
@@ -248,6 +260,7 @@ impl IndicatorStream for StochStream {
     }
 }
 
+/// Typed stochastic state wrapper with bounded history for incremental callers.
 pub struct StochState {
     periods: (usize, usize, usize),
     stream: StochStream,
@@ -255,6 +268,7 @@ pub struct StochState {
 }
 
 impl StochState {
+    /// Construct the typed stochastic state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let periods = parse_options(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;

@@ -1,3 +1,13 @@
+//! Moving Average Convergence/Divergence.
+//!
+//! `Macd` consumes one `real` series plus `short_period`, `long_period`, and
+//! `signal_period` options, and emits `macd`, `macd_signal`, and
+//! `macd_histogram`. The first output appears after the long EMA is warm, so
+//! the lookback is `long_period - 1`. `MacdFix` keeps the same output shape but
+//! fixes the fast/slow periods to 12/26 and only exposes `signal_period`.
+//! `Macd::state` wraps the typed stream in a bounded history buffer for
+//! incremental callers.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -25,12 +35,15 @@ const MACDFIX_METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["macd", "macd_signal", "macd_histogram"],
 };
 
+/// Primary MACD indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Macd;
+/// Fixed-parameter MACD variant with 12/26 EMA periods and the same outputs.
 #[derive(Debug, Clone, Copy)]
 pub struct MacdFix;
 
 impl Macd {
+    /// Build a typed MACD state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<MacdState, IndicatorError> {
         MacdState::new(options, history_capacity)
     }
@@ -206,6 +219,8 @@ impl MacdStream {
     }
 
     fn update_one(&mut self, sample: Real) -> Option<(Real, Real, Real)> {
+        // The stream keeps the short and long EMA states hot, then seeds the
+        // signal line exactly when the long EMA first becomes available.
         let short_value = self.short_ema.feed(sample);
         let long_value = self.long_ema.feed(sample);
         let index = self.progress;
@@ -282,6 +297,7 @@ impl IndicatorStream for MacdStream {
     }
 }
 
+/// Typed MACD state wrapper with bounded history for incremental callers.
 pub struct MacdState {
     short_period: usize,
     long_period: usize,
@@ -291,6 +307,7 @@ pub struct MacdState {
 }
 
 impl MacdState {
+    /// Construct the typed MACD state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let (short_period, long_period, signal_period) = parse_options(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;
@@ -393,6 +410,8 @@ fn run_macd_batch(
         return 0;
     }
 
+    // Batch execution mirrors the stream path directly: two EMA recurrences,
+    // then the signal EMA and histogram, with no intermediate series materialized.
     let (short_per, long_per) = ema_pair(short_period, long_period);
     let signal_per = 2.0 / (signal_period as Real + 1.0);
 

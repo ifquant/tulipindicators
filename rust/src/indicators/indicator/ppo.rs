@@ -1,3 +1,11 @@
+//! Percentage Price Oscillator.
+//!
+//! Input is one `real` series with `short_period` and `long_period` options.
+//! The output is a single `ppo` series computed from two EMAs and starts after
+//! the first price-to-price delta, so the lookback is `1`. `Ppo::state` wraps
+//! the same typed `Real -> Real` stream in a bounded history buffer for
+//! incremental callers.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -16,10 +24,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["ppo"],
 };
 
+/// Typed PPO indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Ppo;
 
 impl Ppo {
+    /// Build a typed PPO state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<PpoState, IndicatorError> {
         PpoState::new(options, history_capacity)
     }
@@ -88,6 +98,8 @@ impl PpoStream {
     }
 
     fn update_one(&mut self, sample: Real) -> Option<Real> {
+        // The stream keeps both EMA recurrences hot and only starts emitting
+        // once the first delta has both inputs initialized.
         let short_ema = self.short_ema.feed(sample);
         let long_ema = self.long_ema.feed(sample);
         let output = if self.progress >= 1 {
@@ -140,6 +152,7 @@ impl IndicatorStream for PpoStream {
     }
 }
 
+/// Typed PPO state wrapper with bounded history for incremental callers.
 pub struct PpoState {
     short_period: usize,
     long_period: usize,
@@ -248,6 +261,8 @@ fn run_ppo_batch(
         return 0;
     }
 
+    // The batch path keeps both EMA states in scalars so the percentage
+    // oscillator stays one-pass and allocation-free.
     let short_per = ema_multiplier(short_period);
     let long_per = ema_multiplier(long_period);
     let mut short_ema = input[0];

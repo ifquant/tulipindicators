@@ -1,3 +1,11 @@
+//! Average Directional Movement Index.
+//!
+//! Inputs are `high` and `low` series plus one `period` option. The output is a
+//! single `adx` series that only starts after the initial DX warmup and the
+//! additional averaging window, so the lookback is `(period - 1) * 2`. The
+//! typed `Adx::state` wrapper stores that same `(Real, Real) -> Real` stream in
+//! a bounded history buffer.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -16,10 +24,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["adx"],
 };
 
+/// Typed ADX indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Adx;
 
 impl Adx {
+    /// Build a typed ADX state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<AdxState, IndicatorError> {
         AdxState::new(options, history_capacity)
     }
@@ -81,6 +91,8 @@ fn run_adx_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real]
         return 0;
     }
 
+    // The batch kernel mirrors the stream path: smooth DM, derive DX, then
+    // seed and update the Wilder average without allocating intermediate series.
     let per = (period - 1) as Real / period as Real;
     let invper = 1.0 / period as Real;
     let mut dmup = 0.0;
@@ -185,6 +197,7 @@ impl IndicatorStream for AdxStream {
     }
 }
 
+/// Typed ADX state wrapper with bounded history for incremental callers.
 pub struct AdxState {
     period: usize,
     stream: AdxStream,
@@ -192,6 +205,7 @@ pub struct AdxState {
 }
 
 impl AdxState {
+    /// Construct the typed ADX state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;

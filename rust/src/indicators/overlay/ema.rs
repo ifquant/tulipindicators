@@ -1,3 +1,11 @@
+//! Exponential Moving Average.
+//!
+//! Input is one `real` series with a single `period` option. EMA has no
+//! lookback, so the batch and stream APIs emit one `ema` value per input sample
+//! after seeding from the first observation. `Ema::state` wraps the same typed
+//! `Real -> Real` flow in a bounded history buffer. The batch kernel keeps the
+//! hot path in a tight pointer walk to avoid extra bounds checks.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -15,6 +23,7 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["ema"],
 };
 
+/// Typed EMA indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Ema;
 
@@ -63,6 +72,7 @@ impl Indicator for Ema {
 }
 
 impl Ema {
+    /// Build a typed EMA state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<EmaState, IndicatorError> {
         EmaState::new(options, history_capacity)
     }
@@ -131,6 +141,7 @@ impl IndicatorStream for EmaStream {
     }
 }
 
+/// Typed EMA state wrapper with bounded history for incremental callers.
 pub struct EmaState {
     multiplier: Real,
     stream: EmaStream,
@@ -138,6 +149,7 @@ pub struct EmaState {
 }
 
 impl EmaState {
+    /// Construct the typed EMA state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options, METADATA.name)?;
         validate_history_capacity(METADATA.name, history_capacity)?;

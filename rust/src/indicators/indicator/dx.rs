@@ -1,3 +1,11 @@
+//! Directional Movement Index.
+//!
+//! Inputs are `high` and `low` series plus one `period` option. The output is a
+//! single `dx` series that starts after the first `period - 1` bars, when the
+//! shared directional-movement warmup has enough data to normalize the ratio.
+//! `Dx::state` wraps the same typed `(Real, Real) -> Real` stream in a bounded
+//! history buffer for incremental consumers.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -16,10 +24,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["dx"],
 };
 
+/// Typed DX indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Dx;
 
 impl Dx {
+    /// Build a typed DX state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<DxState, IndicatorError> {
         DxState::new(options, history_capacity)
     }
@@ -118,6 +128,7 @@ impl IndicatorStream for DxStream {
     }
 }
 
+/// Typed DX state wrapper with bounded history for incremental callers.
 pub struct DxState {
     period: usize,
     stream: DxStream,
@@ -125,6 +136,7 @@ pub struct DxState {
 }
 
 impl DxState {
+    /// Construct the typed DX state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;
@@ -183,6 +195,8 @@ fn run_dx_batch(high: &[Real], low: &[Real], period: usize, output: &mut [Real])
         return 0;
     }
 
+    // The batch kernel keeps the directional sums in local scalars and updates
+    // the ratio in one pass so the stream and batch math stay aligned.
     let mut up = 0.0;
     let mut down = 0.0;
 

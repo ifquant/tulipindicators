@@ -1,3 +1,11 @@
+//! Normalized Average True Range.
+//!
+//! Inputs are `high`, `low`, and `close`, with a single `period` option. The
+//! output is one `natr` series that scales ATR by the current close, so the
+//! batch and stream APIs share the same warmup boundary as `atr` but emit a
+//! percentage-style value. `Natr::state` exposes the typed `(Real, Real, Real)
+//! -> Real` wrapper for incremental callers.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -16,10 +24,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["natr"],
 };
 
+/// Typed NATR indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Natr;
 
 impl Natr {
+    /// Build a typed NATR state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<NatrState, IndicatorError> {
         NatrState::new(options, history_capacity)
     }
@@ -197,6 +207,7 @@ impl IndicatorStream for NatrStream {
     }
 }
 
+/// Typed NATR state wrapper with bounded history for incremental callers.
 pub struct NatrState {
     period: usize,
     stream: NatrStream,
@@ -204,6 +215,7 @@ pub struct NatrState {
 }
 
 impl NatrState {
+    /// Construct the typed NATR state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;

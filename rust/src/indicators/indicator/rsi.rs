@@ -1,3 +1,12 @@
+//! Relative Strength Index.
+//!
+//! Input is one `real` series and one `period` option. The batch and stream
+//! paths both emit a single `rsi` series after the initial warmup window, then
+//! keep updating with the same Wilder-style smoothing state.
+//! `Rsi::state` exposes that stream as a typed `RsiState` wrapper with
+//! `(Real) -> Real` history, so callers can seed, query, and reset RSI without
+//! rebuilding the indicator plumbing.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -16,10 +25,12 @@ const METADATA: IndicatorMetadata = IndicatorMetadata {
     output_names: &["rsi"],
 };
 
+/// Typed RSI indicator entry point for batch, stream, and state APIs.
 #[derive(Debug, Clone, Copy)]
 pub struct Rsi;
 
 impl Rsi {
+    /// Build a typed RSI state wrapper with a bounded history buffer.
     pub fn state(options: &[Real], history_capacity: usize) -> Result<RsiState, IndicatorError> {
         RsiState::new(options, history_capacity)
     }
@@ -85,6 +96,8 @@ impl RsiStream {
     }
 
     fn update_one(&mut self, sample: Real) -> Option<Real> {
+        // The first output appears once the period-length warmup has finished;
+        // after that we keep the smoothed up/down totals in registers.
         let per = 1.0 / self.period as Real;
         match self.last_input {
             None => {
@@ -170,6 +183,7 @@ impl IndicatorStream for RsiStream {
     }
 }
 
+/// Typed RSI state wrapper with bounded history for incremental callers.
 pub struct RsiState {
     period: usize,
     stream: RsiStream,
@@ -177,6 +191,7 @@ pub struct RsiState {
 }
 
 impl RsiState {
+    /// Construct the typed RSI state wrapper from validated options.
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options)?;
         validate_history_capacity(METADATA.name, history_capacity)?;
