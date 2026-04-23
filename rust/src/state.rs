@@ -183,59 +183,73 @@ impl DynamicIndicatorState {
 
     pub fn seed_columns(&mut self, inputs: &[&[Real]]) -> Result<usize, IndicatorError> {
         validate_dynamic_input_columns(self.metadata, inputs)?;
-        self.history.clear();
+        let mut seeded = Self::new(self.indicator, &self.options, self.history.capacity())?;
+        let produced = seeded.seed_columns_fresh(inputs)?;
+        *self = seeded;
+        Ok(produced)
+    }
 
-        if matches!(self.backend, DynamicStateBackend::Stream(_)) {
-            let input_len = inputs.first().map_or(0, |input| input.len());
-            let mut row = vec![0.0; self.metadata.input_names.len()];
-            let mut produced = 0usize;
+    fn seed_columns_fresh(&mut self, inputs: &[&[Real]]) -> Result<usize, IndicatorError> {
+        match &mut self.backend {
+            DynamicStateBackend::Stream(_) => {
+                let input_len = inputs.first().map_or(0, |input| input.len());
+                let mut row = vec![0.0; self.metadata.input_names.len()];
+                let mut produced = 0usize;
 
-            for row_index in 0..input_len {
-                for (input_index, values) in inputs.iter().enumerate() {
-                    row[input_index] = values[row_index];
+                for row_index in 0..input_len {
+                    for (input_index, values) in inputs.iter().enumerate() {
+                        row[input_index] = values[row_index];
+                    }
+
+                    if self.update(&row)?.is_some() {
+                        produced += 1;
+                    }
                 }
 
-                if self.update(&row)?.is_some() {
-                    produced += 1;
-                }
+                Ok(produced)
             }
-
-            return Ok(produced);
+            DynamicStateBackend::Batch(batch) => {
+                batch.input_history = inputs.iter().map(|input| input.to_vec()).collect();
+                batch.produced = 0;
+                self.recompute_batch_backend()
+            }
         }
-
-        let DynamicStateBackend::Batch(batch) = &mut self.backend else {
-            unreachable!();
-        };
-        batch.input_history = inputs.iter().map(|input| input.to_vec()).collect();
-        batch.produced = 0;
-        self.recompute_batch_backend()
     }
 
     pub fn seed_rows(&mut self, rows: &[Vec<Real>]) -> Result<usize, IndicatorError> {
-        self.history.clear();
-
-        if matches!(self.backend, DynamicStateBackend::Stream(_)) {
-            let mut produced = 0usize;
-            for row in rows {
-                if self.update(row)?.is_some() {
-                    produced += 1;
-                }
-            }
-            return Ok(produced);
-        }
-
-        let DynamicStateBackend::Batch(batch) = &mut self.backend else {
-            unreachable!();
-        };
-        batch.input_history = vec![Vec::with_capacity(rows.len()); self.metadata.input_names.len()];
         for row in rows {
             validate_dynamic_input_row(self.metadata, row)?;
-            for (input_index, value) in row.iter().copied().enumerate() {
-                batch.input_history[input_index].push(value);
+        }
+        let mut seeded = Self::new(self.indicator, &self.options, self.history.capacity())?;
+        let produced = seeded.seed_rows_fresh(rows)?;
+        *self = seeded;
+        Ok(produced)
+    }
+
+    fn seed_rows_fresh(&mut self, rows: &[Vec<Real>]) -> Result<usize, IndicatorError> {
+        match &mut self.backend {
+            DynamicStateBackend::Stream(_) => {
+                let mut produced = 0usize;
+                for row in rows {
+                    if self.update(row)?.is_some() {
+                        produced += 1;
+                    }
+                }
+
+                Ok(produced)
+            }
+            DynamicStateBackend::Batch(batch) => {
+                batch.input_history =
+                    vec![Vec::with_capacity(rows.len()); self.metadata.input_names.len()];
+                for row in rows {
+                    for (input_index, value) in row.iter().copied().enumerate() {
+                        batch.input_history[input_index].push(value);
+                    }
+                }
+                batch.produced = 0;
+                self.recompute_batch_backend()
             }
         }
-        batch.produced = 0;
-        self.recompute_batch_backend()
     }
 
     pub fn update(&mut self, input: &[Real]) -> Result<Option<Vec<Real>>, IndicatorError> {

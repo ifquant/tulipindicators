@@ -10,6 +10,29 @@ fn read(path: &str) -> String {
         .unwrap_or_else(|error| panic!("failed to read {path}: {error}"))
 }
 
+fn rust_test_files() -> Vec<String> {
+    let tests_dir = repo_root().join("rust").join("tests");
+    let mut files = fs::read_dir(&tests_dir)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", tests_dir.display()))
+        .map(|entry| {
+            let path = entry
+                .unwrap_or_else(|error| panic!("failed to read test directory entry: {error}"))
+                .path();
+            path
+        })
+        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+        .map(|path| {
+            path.strip_prefix(repo_root())
+                .expect("test file should live under repo root")
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .filter(|path| path != "rust/tests/run_single_style.rs")
+        .collect::<Vec<_>>();
+    files.sort();
+    files
+}
+
 fn rust_code_blocks(markdown: &str) -> Vec<String> {
     let mut blocks = Vec::new();
     let mut current = Vec::new();
@@ -71,8 +94,12 @@ fn tests_only_keep_batch_zero_in_whitelisted_multi_output_or_comparison_cases() 
         ),
     ];
 
-    for (path, snippets) in allowlisted_snippets {
-        let contents = read(path);
+    for path in rust_test_files() {
+        let snippets = allowlisted_snippets
+            .iter()
+            .find_map(|(allowed_path, snippets)| (*allowed_path == path).then_some(*snippets))
+            .unwrap_or(&[]);
+        let contents = read(&path);
         for line in contents.lines() {
             if !line.contains("batch[0]") {
                 continue;

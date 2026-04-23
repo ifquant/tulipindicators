@@ -190,6 +190,49 @@ fn dynamic_state_for_rsi_matches_batch_and_supports_updates() {
 }
 
 #[test]
+fn dynamic_state_reseeding_stream_backend_starts_from_clean_state() {
+    let first_input = close_series();
+    let second_input: Vec<Real> = first_input
+        .iter()
+        .enumerate()
+        .map(|(index, value)| value + 10.0 + index as Real * 0.03)
+        .collect();
+    let options = [14.0];
+    let expected = Rsi
+        .run_single(&[&second_input], &options)
+        .expect("second rsi batch");
+
+    let mut state = DynamicIndicatorState::from_name("rsi", &options, expected.len())
+        .expect("dynamic rsi state");
+    state
+        .seed_columns(&[&first_input])
+        .expect("first dynamic rsi seed");
+    let produced = state
+        .seed_columns(&[&second_input])
+        .expect("second dynamic rsi seed should reset stream backend");
+
+    assert_eq!(produced, expected.len());
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(
+        state.latest().map(|values| values[0]),
+        expected.last().copied(),
+    );
+
+    let second_rows = second_input
+        .iter()
+        .map(|value| vec![*value])
+        .collect::<Vec<_>>();
+    state
+        .seed_rows(&second_rows)
+        .expect("row dynamic rsi seed should reset stream backend");
+    assert_eq!(state.len(), expected.len());
+    assert_option_real_eq(
+        state.latest().map(|values| values[0]),
+        expected.last().copied(),
+    );
+}
+
+#[test]
 fn dynamic_state_for_dm_matches_batch_and_supports_updates() {
     let (high, low) = high_low_series();
     let options = [14.0];
