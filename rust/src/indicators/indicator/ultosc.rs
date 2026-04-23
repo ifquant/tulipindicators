@@ -1,3 +1,7 @@
+//! Ultimate Oscillator (`ultosc`) blends buying-pressure ratios across three rolling windows.
+//!
+//! The implementation keeps separate rolling sums for the short, medium, and long windows and emits
+//! the weighted oscillator after the longest window has warmed up.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

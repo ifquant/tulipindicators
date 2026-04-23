@@ -1,3 +1,7 @@
+//! Bollinger Bands (`bbands`) produce lower, middle, and upper bands around a rolling mean.
+//!
+//! The batch path tracks rolling sums and squared sums so standard deviation can be updated without
+//! rescanning each period window.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

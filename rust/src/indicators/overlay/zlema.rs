@@ -1,3 +1,6 @@
+//! Zero-Lag Exponential Moving Average (`zlema`) feeds EMA with de-lagged price samples.
+//!
+//! The adjusted input uses the period-derived lag offset before applying the standard EMA recurrence.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

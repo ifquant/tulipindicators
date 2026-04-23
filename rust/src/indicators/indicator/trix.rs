@@ -1,3 +1,7 @@
+//! TRIX (`trix`) reports one-period rate of change after triple EMA smoothing.
+//!
+//! The EMA chain is maintained directly and only emits once all three smoothing stages and the prior
+//! triple-smoothed value are available.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

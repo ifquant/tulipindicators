@@ -1,3 +1,7 @@
+//! TA-Lib compatibility oscillator indicators with Tulip-style metadata and validation.
+//!
+//! The implementations favor direct batch kernels so callers can still use the zero-allocation
+//! `run_in_place` path even for compatibility indicators.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};

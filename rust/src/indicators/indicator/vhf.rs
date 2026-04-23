@@ -1,3 +1,7 @@
+//! Vertical Horizontal Filter (`vhf`) compares net price movement with accumulated absolute movement.
+//!
+//! The rolling high/low and movement sum state measure whether the input behaves more like a trend
+//! or a choppy range.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

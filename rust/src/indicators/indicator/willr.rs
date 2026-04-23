@@ -1,3 +1,6 @@
+//! Williams %R (`willr`) locates the close within the recent high/low range.
+//!
+//! The rolling extrema state provides the highest high and lowest low for each complete window.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

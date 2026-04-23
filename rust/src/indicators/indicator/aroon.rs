@@ -1,3 +1,6 @@
+//! Aroon (`aroon`) tracks how recently the highest high and lowest low occurred in a rolling window.
+//!
+//! The output pair is expressed as down/up percentages, matching the Tulip Indicators convention.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

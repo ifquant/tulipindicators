@@ -1,3 +1,7 @@
+//! Stochastic RSI (`stochrsi`) applies stochastic normalization to an RSI series.
+//!
+//! The kernel computes RSI state and the min/max RSI window together so it avoids allocating an
+//! intermediate RSI vector for the common batch path.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

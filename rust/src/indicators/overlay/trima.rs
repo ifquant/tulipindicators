@@ -1,3 +1,7 @@
+//! Triangular Moving Average (`trima`) applies a double-smoothed moving-average window.
+//!
+//! The implementation follows Tulip's period-dependent window shape so odd and even periods produce
+//! the expected centered smoothing behavior.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};

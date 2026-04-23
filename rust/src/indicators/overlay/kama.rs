@@ -1,3 +1,7 @@
+//! Kaufman Adaptive Moving Average (`kama`) adjusts smoothing by recent efficiency ratio.
+//!
+//! The state tracks signal and noise over the period window, then applies the adaptive smoothing
+//! constant to the prior KAMA value.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

@@ -1,3 +1,7 @@
+//! TA-Lib compatibility smoother overlays exposed beside native Tulip moving averages.
+//!
+//! These implementations keep specialized smoothing formulas available without changing the public
+//! batch, in-place, stream, or registry contracts.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};

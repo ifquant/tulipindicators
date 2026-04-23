@@ -1,3 +1,7 @@
+//! Awesome Oscillator (`ao`) computes the spread between fast and slow median-price sums.
+//!
+//! The batch and stream paths both keep rolling sums over 5 and 34 median prices so the
+//! oscillator can be updated without copying input windows.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

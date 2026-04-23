@@ -1,3 +1,7 @@
+//! Ease of Movement (`emv`) relates midpoint movement to volume-adjusted high/low range.
+//!
+//! The stream state keeps the previous midpoint and a rolling sum so updates only touch the newest
+//! candle and the value leaving the window.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

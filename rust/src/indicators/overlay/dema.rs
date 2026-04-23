@@ -1,3 +1,6 @@
+//! Double Exponential Moving Average (`dema`) removes part of EMA lag with a two-stage EMA chain.
+//!
+//! The direct kernel keeps both EMA stages in registers and emits `2 * ema1 - ema2` after warmup.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

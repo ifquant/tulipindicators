@@ -1,3 +1,7 @@
+//! Extended Parabolic SAR (`sarext`) exposes TA-Lib's additional long/short acceleration controls.
+//!
+//! The implementation keeps the richer reversal state local to the kernel while presenting the same
+//! single-output indicator contract as ordinary PSAR.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata,

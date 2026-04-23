@@ -1,3 +1,6 @@
+//! Standard Error (`stderr`) scales rolling standard deviation by the square root of the period.
+//!
+//! It shares the same rolling-sum shape as `stddev` and emits one value per complete window.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

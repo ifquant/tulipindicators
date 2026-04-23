@@ -1,3 +1,7 @@
+//! Rate of Change Ratio (`rocr`) divides the current value by the value `period` samples ago.
+//!
+//! This is the ratio form of ROC and therefore preserves the same lookback and direct indexing
+//! shape in batch mode.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, output_len_for_input, validate_output_slices, Indicator, IndicatorMetadata,

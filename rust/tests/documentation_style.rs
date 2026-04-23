@@ -83,7 +83,6 @@ fn public_api_modules_have_crate_or_item_docs() {
 }
 
 #[test]
-#[ignore = "enabled after indicator source comments land"]
 fn indicator_source_files_have_explanatory_comments() {
     let allowed_generated_or_macro_files = [
         "rust/src/indicators/simple/mod.rs",

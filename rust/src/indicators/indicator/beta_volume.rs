@@ -1,3 +1,7 @@
+//! TA-Lib compatibility volume indicators with Tulip-style execution contracts.
+//!
+//! Volume-oriented indicators usually combine price and volume inputs, so this file keeps their
+//! input validation and batch kernels grouped together.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};

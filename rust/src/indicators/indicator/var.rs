@@ -1,3 +1,7 @@
+//! Variance (`var`) computes rolling dispersion from sums of values and squared values.
+//!
+//! This file provides the variance primitive used by related volatility indicators while preserving
+//! the same one-output batch and stream contracts.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

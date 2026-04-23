@@ -1,3 +1,7 @@
+//! Volatility helper indicators that share rolling return and dispersion calculations.
+//!
+//! Grouping these kernels keeps the option parsing and numerical conventions aligned for related
+//! volatility outputs.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

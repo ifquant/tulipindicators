@@ -1,3 +1,7 @@
+//! Standard Deviation (`stddev`) computes rolling sample dispersion over one input series.
+//!
+//! The rolling sums of values and squared values make each batch output constant-time after the
+//! initial window is built.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

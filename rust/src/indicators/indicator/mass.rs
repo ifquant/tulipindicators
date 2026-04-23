@@ -1,3 +1,7 @@
+//! Mass Index (`mass`) sums the ratio of single- and double-smoothed high/low ranges.
+//!
+//! The implementation maintains the EMA chain and final rolling sum directly instead of exposing
+//! intermediate smoothed ranges.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

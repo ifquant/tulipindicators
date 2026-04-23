@@ -1,3 +1,7 @@
+//! Variable Index Dynamic Average (`vidya`) adapts EMA smoothing with a volatility index.
+//!
+//! The kernel tracks short and long volatility estimates and uses their ratio to scale the smoothing
+//! factor applied to the prior output.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

@@ -1,3 +1,7 @@
+//! Intraday Momentum Index (`imi`) applies RSI-style smoothing to open/close intraday moves.
+//!
+//! The indicator consumes open and close inputs and emits a bounded momentum value after the period
+//! window has accumulated enough gains and losses.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata,

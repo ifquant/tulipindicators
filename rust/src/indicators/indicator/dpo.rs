@@ -1,3 +1,7 @@
+//! Detrended Price Oscillator (`dpo`) subtracts a displaced moving average from price.
+//!
+//! The lookback includes the SMA period and displacement so each output has the centered average it
+//! needs without revisiting earlier output slots.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

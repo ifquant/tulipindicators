@@ -1,3 +1,7 @@
+//! TA-Lib compatibility momentum indicators that are not part of the original Tulip set.
+//!
+//! These wrappers keep the public registry complete while using the same batch/in-place contracts
+//! as native Tulip indicators.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};

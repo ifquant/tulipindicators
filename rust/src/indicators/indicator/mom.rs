@@ -1,3 +1,6 @@
+//! Momentum (`mom`) returns the difference between the current value and a prior value.
+//!
+//! The batch kernel is intentionally direct: after lookback, each output is one indexed subtraction.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, output_len_for_input, validate_output_slices, Indicator, IndicatorMetadata,

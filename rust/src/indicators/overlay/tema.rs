@@ -1,3 +1,6 @@
+//! Triple Exponential Moving Average (`tema`) combines three EMA stages to reduce lag.
+//!
+//! The direct kernel emits `3 * ema1 - 3 * ema2 + ema3` only after all three stages are initialized.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

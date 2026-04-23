@@ -1,3 +1,7 @@
+//! Weighted Moving Average (`wma`) gives newer samples larger linear weights.
+//!
+//! The batch kernel updates the weighted sum and plain sum together, avoiding a full weighted-window
+//! scan for every output.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

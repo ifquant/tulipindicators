@@ -1,3 +1,7 @@
+//! Hull Moving Average (`hma`) smooths price with weighted moving averages and a square-root period.
+//!
+//! The implementation materializes only the intermediate series needed by the WMA composition while
+//! preserving the final one-output overlay contract.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

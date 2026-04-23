@@ -1,3 +1,7 @@
+//! TA-Lib compatibility channel overlays implemented with Tulip-style metadata.
+//!
+//! Channel indicators usually produce multiple price envelopes, so this file keeps the shared
+//! validation and output-buffer sizing logic near the kernels.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};

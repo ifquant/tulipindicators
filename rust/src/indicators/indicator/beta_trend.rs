@@ -1,3 +1,7 @@
+//! TA-Lib compatibility trend indicators exposed through the Tulip registry.
+//!
+//! These indicators preserve TA-Lib naming and output shapes while following the crate's shared
+//! option parsing and buffer validation rules.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};

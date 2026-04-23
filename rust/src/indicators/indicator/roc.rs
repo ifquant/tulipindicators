@@ -1,3 +1,7 @@
+//! Rate of Change (`roc`) reports percentage change from a value `period` samples ago.
+//!
+//! Outputs begin after the lookback period and use the historical input directly rather than keeping
+//! an extra rolling buffer in batch mode.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, output_len_for_input, validate_output_slices, Indicator, IndicatorMetadata,

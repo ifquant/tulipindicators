@@ -1,3 +1,7 @@
+//! Klinger Volume Oscillator (`kvo`) combines volume force with fast and slow EMA smoothing.
+//!
+//! The direct kernel keeps the trend, cumulative measurement, and EMA state together to avoid the
+//! wrapper allocation cost that would come from materializing intermediate series.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

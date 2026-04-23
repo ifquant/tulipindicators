@@ -1,3 +1,7 @@
+//! Volume Weighted Moving Average (`vwma`) weights price by volume over a rolling window.
+//!
+//! The numerator and volume denominator are maintained as rolling sums for constant-time updates
+//! after the initial window.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};

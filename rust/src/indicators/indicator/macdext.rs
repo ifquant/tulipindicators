@@ -1,3 +1,7 @@
+//! Extended MACD (`macdext`) allows independent moving-average types for fast, slow, and signal legs.
+//!
+//! It is a TA-Lib compatibility indicator, so the output remains `(macd, signal, histogram)` while
+//! option parsing accepts the additional MA-type controls.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata,

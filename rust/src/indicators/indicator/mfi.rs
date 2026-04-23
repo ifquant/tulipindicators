@@ -1,3 +1,7 @@
+//! Money Flow Index (`mfi`) computes RSI-style pressure from typical price and volume.
+//!
+//! Positive and negative money flow are accumulated in rolling sums, producing one bounded output
+//! once the period window is full.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

@@ -1,3 +1,7 @@
+//! T3 moving average (`t3`) applies a six-stage EMA cascade with volume-factor coefficients.
+//!
+//! The final output combines the later EMA stages with precomputed coefficients after the cascade
+//! has fully warmed up.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata,

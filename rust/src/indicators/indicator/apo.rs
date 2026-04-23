@@ -1,3 +1,7 @@
+//! Absolute Price Oscillator (`apo`) computes the difference between fast and slow moving averages.
+//!
+//! This implementation shares the moving-average dispatcher used by TA-Lib-style MA indicators and
+//! returns a single oscillator series after the slow period has warmed up.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

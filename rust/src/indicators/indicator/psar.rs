@@ -1,3 +1,7 @@
+//! Parabolic SAR (`psar`) tracks a trend-following stop using acceleration and extreme-point state.
+//!
+//! The state machine mirrors the C implementation closely so reversals, acceleration updates, and
+//! clamping rules stay explicit in the hot loop.
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::{IndicatorCategory, Real};
