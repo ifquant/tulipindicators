@@ -1,49 +1,54 @@
-//! Rust bindings and stateful APIs for Tulip Indicators.
+//! Rust bindings for Tulip Indicators.
 //!
-//! The crate keeps the existing high-performance batch layer:
+//! The crate exposes two main usage styles:
 //!
-//! - [`Indicator::run`]
-//! - [`Indicator::run_single`]
-//! - [`Indicator::run_in_place`]
+//! - batch indicators through [`Indicator`]
+//! - incremental indicators through [`IndicatorState`] and [`DynamicIndicatorState`]
 //!
-//! On top of that batch layer, it also exposes a stateful incremental API:
+//! Batch calls allocate owned output series by default. Use [`Indicator::run`] when you
+//! want the computed values returned as `Vec<Vec<Real>>`, [`Indicator::run_in_place`] when
+//! you want to write into caller-provided buffers, and [`Indicator::run_single`] for the
+//! common single-output case.
 //!
-//! - typed state wrappers such as [`RsiState`] and [`MacdState`]
-//! - runtime-selected [`DynamicIndicatorState`]
-//! - fixed-capacity history access through [`IndicatorState::latest`] and
-//!   [`IndicatorState::get`]
+//! Incremental state is useful when you process one sample or one row at a time. The
+//! history buffer is always bounded and [`IndicatorState::history_capacity`] must be
+//! greater than zero. If you do not need indexed history, prefer a stream-backed API
+//! instead of keeping extra state yourself.
 //!
-//! For a longer guide, see the repository document:
-//! `tutorials/state-api.md`.
-//!
-//! # Typed state example
-//!
-//! ```
-//! use tulipindicators::{IndicatorState, Real, Rsi};
-//!
-//! let closes: Vec<Real> = vec![
-//!     100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0, 106.0, 105.5,
-//! ];
-//! let mut state = Rsi::state(&[3.0], 16)?;
-//!
-//! let produced = state.seed(&closes)?;
-//! assert!(produced <= closes.len());
-//!
-//! let latest = state.update(106.5);
-//! assert_eq!(latest, state.latest());
-//! let _previous = state.get(1);
-//! # Ok::<(), tulipindicators::IndicatorError>(())
-//! ```
-//!
-//! # Batch single-output example
+//! # Batch example
 //!
 //! ```
 //! use tulipindicators::{Indicator, Real, Rsi};
 //!
-//! let closes: Vec<Real> = vec![
-//!     100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0, 106.0, 105.5,
-//! ];
+//! let closes: Vec<Real> = vec![100.0, 101.0, 102.0, 101.5, 103.0];
 //! let values = Rsi.run_single(&[&closes], &[3.0])?;
+//! assert!(!values.is_empty());
+//! # Ok::<(), tulipindicators::IndicatorError>(())
+//! ```
+//!
+//! # Incremental example
+//!
+//! ```
+//! use tulipindicators::{IndicatorState, Real, Rsi};
+//!
+//! let closes: Vec<Real> = vec![100.0, 101.0, 102.0, 101.5, 103.0];
+//! let mut state = Rsi::state(&[3.0], 8)?;
+//! let seeded = state.seed(&closes)?;
+//! assert!(seeded <= closes.len());
+//! assert_eq!(state.latest(), state.get(0));
+//! # Ok::<(), tulipindicators::IndicatorError>(())
+//! ```
+//!
+//! # Stream example
+//!
+//! ```
+//! use tulipindicators::{Indicator, IndicatorStream, Real, Sma};
+//!
+//! let closes: Vec<Real> = vec![100.0, 101.0, 102.0, 101.5, 103.0];
+//! let mut stream = Sma
+//!     .create_stream(&[3.0])?
+//!     .expect("SMA supports incremental streaming");
+//! let values = stream.feed_single(&[&closes])?;
 //! assert!(!values.is_empty());
 //! # Ok::<(), tulipindicators::IndicatorError>(())
 //! ```
@@ -53,20 +58,15 @@
 //! ```
 //! use tulipindicators::{DynamicIndicatorState, IndicatorStateFactory, Real, RSI};
 //!
-//! let closes: Vec<Real> = vec![
-//!     100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0, 106.0, 105.5,
-//! ];
+//! let closes: Vec<Real> = vec![100.0, 101.0, 102.0, 101.5, 103.0];
+//! let mut state = DynamicIndicatorState::from_name("rsi", &[3.0], 8)?;
+//! state.seed_columns(&[&closes])?;
+//! let _ = state.update(&[103.5])?;
 //!
-//! let mut by_name = DynamicIndicatorState::from_name("rsi", &[3.0], 16)?;
-//! by_name.seed_columns(&[&closes])?;
-//! let next = [106.5];
-//! let _ = by_name.update(&next)?;
-//!
-//! let mut by_factory = RSI.dynamic_state(&[3.0], 16)?;
-//! by_factory.seed_columns(&[&closes])?;
-//! let _ = by_factory.update(&next)?;
-//! assert_eq!(by_factory.latest(), by_name.latest());
-//! assert_eq!(by_factory.latest_ref(), by_name.latest_ref());
+//! let mut typed = RSI.dynamic_state(&[3.0], 8)?;
+//! typed.seed_columns(&[&closes])?;
+//! let _ = typed.update(&[103.5])?;
+//! assert_eq!(typed.latest_ref(), state.latest_ref());
 //! # Ok::<(), tulipindicators::IndicatorError>(())
 //! ```
 //!

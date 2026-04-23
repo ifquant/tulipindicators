@@ -1,12 +1,23 @@
+//! Stateful incremental indicator APIs.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{Indicator, IndicatorMetadata, IndicatorStream};
 use crate::core::types::Real;
 use crate::registry;
 
+/// Bounded history wrapper for incremental indicator state.
+///
+/// Implementations store recent outputs and expose indexed access through
+/// [`IndicatorState::latest`] and [`IndicatorState::get`].
 pub trait IndicatorState {
+    /// Per-sample input type accepted by [`IndicatorState::update`].
     type Input;
+    /// Output row type returned by this state.
     type Output: Clone;
 
+    /// Seed the state by replaying a slice of inputs.
+    ///
+    /// The default implementation forwards each item to [`IndicatorState::update`].
     fn seed(&mut self, input: &[Self::Input]) -> Result<usize, IndicatorError>
     where
         Self::Input: Copy,
@@ -20,23 +31,35 @@ pub trait IndicatorState {
         Ok(produced)
     }
 
+    /// Update the state with one new input sample.
     fn update(&mut self, input: Self::Input) -> Option<Self::Output>;
+    /// Return the most recently produced output, if any.
     fn latest(&self) -> Option<Self::Output>;
+    /// Return an older output by offset from the latest item.
     fn get(&self, index_from_latest: usize) -> Option<Self::Output>;
+    /// Return the number of stored outputs.
     fn len(&self) -> usize;
+    /// Return the fixed history capacity for this state.
     fn history_capacity(&self) -> usize;
+    /// Clear any stored history and internal progress.
     fn reset(&mut self);
 
+    /// Return `true` when no outputs have been produced yet.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Return `true` after the state has produced at least one output.
     fn is_ready(&self) -> bool {
         self.latest().is_some()
     }
 }
 
+/// Factory for runtime-selected incremental state.
 pub trait IndicatorStateFactory: Indicator {
+    /// Create a dynamic state object with bounded history.
+    ///
+    /// `history_capacity` must be greater than zero.
     fn dynamic_state(
         &'static self,
         options: &[Real],
@@ -51,6 +74,7 @@ pub trait IndicatorStateFactory: Indicator {
 
 impl<T: Indicator + ?Sized> IndicatorStateFactory for T {}
 
+/// Ring buffer used by [`DynamicIndicatorState`].
 #[derive(Debug, Clone)]
 pub(crate) struct RingHistory<T: Clone> {
     buf: Vec<T>,
@@ -113,6 +137,10 @@ impl<T: Clone> RingHistory<T> {
     }
 }
 
+/// Validate the requested history capacity.
+///
+/// The capacity must be greater than zero because incremental state needs at least one
+/// slot to retain the most recent output row.
 pub(crate) fn validate_history_capacity(
     indicator: &'static str,
     history_capacity: usize,
@@ -128,6 +156,10 @@ pub(crate) fn validate_history_capacity(
     Ok(())
 }
 
+/// Runtime-selected incremental indicator state.
+///
+/// This type can be constructed from a registry name or from a typed indicator factory.
+/// It keeps a bounded output history and can seed data as either input columns or rows.
 pub struct DynamicIndicatorState {
     indicator: &'static dyn Indicator,
     metadata: &'static IndicatorMetadata,
@@ -148,6 +180,7 @@ struct BatchState {
 }
 
 impl DynamicIndicatorState {
+    /// Create the internal batch or stream backend for a given indicator.
     fn build_backend(
         indicator: &'static dyn Indicator,
         metadata: &'static IndicatorMetadata,
@@ -162,6 +195,9 @@ impl DynamicIndicatorState {
         })
     }
 
+    /// Create a new dynamic state with the given indicator and options.
+    ///
+    /// `history_capacity` must be greater than zero.
     pub fn new(
         indicator: &'static dyn Indicator,
         options: &[Real],
@@ -182,6 +218,9 @@ impl DynamicIndicatorState {
         })
     }
 
+    /// Create a dynamic state by registry name.
+    ///
+    /// `history_capacity` must be greater than zero.
     pub fn from_name(
         name: &str,
         options: &[Real],
@@ -193,10 +232,15 @@ impl DynamicIndicatorState {
         Self::new(indicator, options, history_capacity)
     }
 
+    /// Return the indicator metadata for this state.
     pub fn metadata(&self) -> &'static IndicatorMetadata {
         self.metadata
     }
 
+    /// Seed the state from aligned input columns.
+    ///
+    /// Reseeding is atomic: existing progress and history are replaced only after the
+    /// new inputs validate and seed successfully.
     pub fn seed_columns(&mut self, inputs: &[&[Real]]) -> Result<usize, IndicatorError> {
         validate_dynamic_input_columns(self.metadata, inputs)?;
         let mut seeded = Self::new(self.indicator, &self.options, self.history.capacity())?;
@@ -232,6 +276,10 @@ impl DynamicIndicatorState {
         }
     }
 
+    /// Seed the state from one row per sample.
+    ///
+    /// Reseeding is atomic: existing progress and history are replaced only after every
+    /// row validates and the new data seeds successfully.
     pub fn seed_rows(&mut self, rows: &[Vec<Real>]) -> Result<usize, IndicatorError> {
         for row in rows {
             validate_dynamic_input_row(self.metadata, row)?;
@@ -268,6 +316,7 @@ impl DynamicIndicatorState {
         }
     }
 
+    /// Update the state with one aligned input row.
     pub fn update(&mut self, input: &[Real]) -> Result<Option<Vec<Real>>, IndicatorError> {
         validate_dynamic_input_row(self.metadata, input)?;
 
@@ -310,38 +359,53 @@ impl DynamicIndicatorState {
         }
     }
 
+    /// Return the latest stored output as a borrowed slice.
+    ///
+    /// The returned slice borrows this state's internal history. Use [`Self::latest`]
+    /// when the value must outlive the next mutable call.
     pub fn latest_ref(&self) -> Option<&[Real]> {
         self.history.latest().map(Vec::as_slice)
     }
 
+    /// Return the latest stored output as an owned vector.
     pub fn latest(&self) -> Option<Vec<Real>> {
         self.latest_ref().map(<[Real]>::to_vec)
     }
 
+    /// Return a prior stored output as a borrowed slice.
+    ///
+    /// The returned slice borrows this state's internal history. Use [`Self::get`] when
+    /// the value must outlive the next mutable call.
     pub fn get_ref(&self, index_from_latest: usize) -> Option<&[Real]> {
         self.history.get(index_from_latest).map(Vec::as_slice)
     }
 
+    /// Return a prior stored output as an owned vector.
     pub fn get(&self, index_from_latest: usize) -> Option<Vec<Real>> {
         self.get_ref(index_from_latest).map(<[Real]>::to_vec)
     }
 
+    /// Return the number of stored output rows.
     pub fn len(&self) -> usize {
         self.history.len()
     }
 
+    /// Return the fixed history capacity.
     pub fn history_capacity(&self) -> usize {
         self.history.capacity()
     }
 
+    /// Return `true` when no outputs have been stored yet.
     pub fn is_empty(&self) -> bool {
         self.history.len() == 0
     }
 
+    /// Return `true` after the state has produced at least one output row.
     pub fn is_ready(&self) -> bool {
         self.latest_ref().is_some()
     }
 
+    /// Clear the state and rebuild the underlying backend.
     pub fn reset(&mut self) -> Result<(), IndicatorError> {
         self.backend = Self::build_backend(self.indicator, self.metadata, &self.options)?;
         self.history.clear();

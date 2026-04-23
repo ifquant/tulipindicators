@@ -1,9 +1,14 @@
+//! Candlestick pattern helpers and registry data.
+
 use crate::core::error::IndicatorError;
 use crate::core::types::Real;
 
+/// Bitset type used to combine candlestick pattern matches.
 pub type CandleSet = u64;
 
+/// No candlestick patterns matched.
 pub const TC_NONE: CandleSet = 0;
+/// All supported candlestick patterns.
 pub const TC_ALL: CandleSet = (1u64 << 26) - 1;
 pub const TC_ABANDONED_BABY_BEAR: CandleSet = 1u64 << 0;
 pub const TC_ABANDONED_BABY_BULL: CandleSet = 1u64 << 1;
@@ -32,14 +37,22 @@ pub const TC_THREE_BLACK_CROWS: CandleSet = 1u64 << 23;
 pub const TC_THREE_WHITE_SOLDIERS: CandleSet = 1u64 << 24;
 pub const TC_WHITE_MARUBOZU: CandleSet = 1u64 << 25;
 
+/// Thresholds used when evaluating candle pattern rules.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CandleConfig {
+    /// Number of samples used when deriving body and wick averages.
     pub period: usize,
+    /// Threshold for candles with effectively no body.
     pub body_none: Real,
+    /// Threshold for short candle bodies.
     pub body_short: Real,
+    /// Threshold for long candle bodies.
     pub body_long: Real,
+    /// Threshold for wicks that are treated as negligible.
     pub wick_none: Real,
+    /// Threshold for wicks that are treated as long.
     pub wick_long: Real,
+    /// Threshold for values that are considered near another reference price.
     pub near: Real,
 }
 
@@ -57,12 +70,16 @@ impl Default for CandleConfig {
     }
 }
 
+/// One candle pattern hit at a specific index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CandleHit {
+    /// Zero-based input index where the pattern matched.
     pub index: usize,
+    /// Bitset of matching patterns at this index.
     pub patterns: CandleSet,
 }
 
+/// Collected candlestick matches for a run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CandleResult {
     hits: Vec<CandleHit>,
@@ -70,6 +87,7 @@ pub struct CandleResult {
 }
 
 impl CandleResult {
+    /// Create an empty result set.
     pub fn new() -> Self {
         Self {
             hits: Vec::new(),
@@ -77,18 +95,22 @@ impl CandleResult {
         }
     }
 
+    /// Return the number of matched indices.
     pub fn count(&self) -> usize {
         self.hits.len()
     }
 
+    /// Return the total number of pattern hits, including repeated hits at one index.
     pub fn pattern_count(&self) -> usize {
         self.pattern_count
     }
 
+    /// Return the hit at `index` in match order.
     pub fn get(&self, index: usize) -> Option<CandleHit> {
         self.hits.get(index).copied()
     }
 
+    /// Return the pattern bitset at a source index.
     pub fn at(&self, index: usize) -> CandleSet {
         self.hits
             .binary_search_by_key(&index, |hit| hit.index)
@@ -97,6 +119,7 @@ impl CandleResult {
             .unwrap_or(TC_NONE)
     }
 
+    /// Iterate over matched indices in order.
     pub fn iter(&self) -> impl Iterator<Item = CandleHit> + '_ {
         self.hits.iter().copied()
     }
@@ -122,10 +145,14 @@ impl Default for CandleResult {
     }
 }
 
+/// Metadata describing a named candlestick pattern.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CandleInfo {
+    /// Lowercase registry name.
     pub name: &'static str,
+    /// Human-readable name.
     pub full_name: &'static str,
+    /// Bitset value used to represent the pattern.
     pub pattern: CandleSet,
 }
 
@@ -262,14 +289,17 @@ const CANDLES: [CandleInfo; 26] = [
     },
 ];
 
+/// Return every supported candlestick pattern.
 pub fn all_candles() -> &'static [CandleInfo] {
     &CANDLES
 }
 
+/// Return the number of supported candlestick patterns.
 pub fn candle_count() -> usize {
     CANDLES.len()
 }
 
+/// Look up a candle pattern by its lowercase registry name.
 pub fn find_candle(name: &str) -> Option<&'static CandleInfo> {
     CANDLES
         .binary_search_by_key(&name, |info| info.name)
@@ -277,6 +307,7 @@ pub fn find_candle(name: &str) -> Option<&'static CandleInfo> {
         .map(|index| &CANDLES[index])
 }
 
+/// Look up a candle pattern by bitset value.
 pub fn get_candle_info(pattern: CandleSet) -> Option<&'static CandleInfo> {
     let lowest_bit = pattern & (!pattern + 1);
     CANDLES
@@ -285,6 +316,10 @@ pub fn get_candle_info(pattern: CandleSet) -> Option<&'static CandleInfo> {
         .map(|index| &CANDLES[index])
 }
 
+/// Run all supported candlestick pattern checks over the provided OHLC data.
+///
+/// `inputs` must contain four aligned slices in open, high, low, close order.
+/// `patterns` is a bitset of the candle families to evaluate.
 pub fn run_candles(
     patterns: CandleSet,
     inputs: &[&[Real]],
@@ -583,6 +618,7 @@ pub fn run_candles(
     Ok(result)
 }
 
+/// Run the candle pattern identified by its bitset value.
 pub fn run_candle_pattern(
     pattern: CandleSet,
     inputs: &[&[Real]],
@@ -591,6 +627,7 @@ pub fn run_candle_pattern(
     run_candles(pattern, inputs, config)
 }
 
+/// Run the candle pattern identified by its registry name.
 pub fn run_candle_named(
     name: &str,
     inputs: &[&[Real]],
