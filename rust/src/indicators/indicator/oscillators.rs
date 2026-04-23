@@ -1,3 +1,8 @@
+//! Oscillator-family indicators grouped here share the same shape discipline:
+//! most consume one to three price series plus a period option, then emit one
+//! or two aligned output series. The batch helpers below keep the per-indicator
+//! formulas isolated while the stream adapters preserve the same rolling state.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -90,6 +95,8 @@ pub struct Msw;
 #[derive(Debug, Clone, Copy)]
 pub struct Qstick;
 
+// These variants reuse the same parsing and output sizing rules; only the
+// window math and output arity differ.
 impl Indicator for Cci {
     fn metadata(&self) -> &'static IndicatorMetadata {
         &CCI_METADATA
@@ -519,6 +526,7 @@ fn run_cci_batch(
     out_index
 }
 
+// Stream state for the rolling-window oscillator variants.
 struct CmoStream {
     progress: usize,
     previous: Option<Real>,
@@ -578,6 +586,7 @@ impl IndicatorStream for CmoStream {
     }
 }
 
+// Batch helpers keep the shared rolling-window bookkeeping in one place.
 fn run_cmo_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
     if input.len() <= period {
         return 0;

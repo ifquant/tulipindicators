@@ -1,3 +1,9 @@
+//! Decay and lag indicators keep only the minimum state needed for a trailing
+//! effect: `decay` and `edecay` seed from the first sample and then apply
+//! linear or exponential decay, while `lag` shifts the series by a fixed number
+//! of samples and therefore drops the leading `period` outputs. Streamed lag
+//! uses a small buffer to preserve the same chunk-boundary behavior.
+
 use super::{parse_nonnegative_period, parse_positive_period};
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
@@ -42,6 +48,7 @@ pub struct EDecay;
 #[derive(Debug, Clone, Copy)]
 pub struct Lag;
 
+// The decay variants update from one retained value per series.
 impl Indicator for Decay {
     fn metadata(&self) -> &'static IndicatorMetadata {
         &DECAY_METADATA
@@ -267,6 +274,7 @@ impl Indicator for Lag {
     }
 }
 
+// Lag stores only the trailing samples required for the shift.
 struct LagStream {
     period: usize,
     buffer: Vec<Real>,

@@ -1,3 +1,9 @@
+//! TA-Lib-style moving-average overlays are dispatch wrappers: `ma` selects a
+//! fixed-period smoother by MA type, while `mavp` clamps a per-bar period
+//! input and reuses the same concrete MA implementations. `mavp` also owns the
+//! variable-period policy: it clamps each requested period, special-cases SMA,
+//! and caches repeated non-SMA periods before dispatching.
+
 use super::beta_smoothers::Mama;
 use super::{
     dema::Dema, ema::Ema, kama::Kama, sma::Sma, t3::T3, tema::Tema, trima::Trima, wma::Wma,
@@ -49,6 +55,7 @@ pub(crate) enum TalibMaType {
     T3,
 }
 
+// `ma` and `mavp` are thin option parsers over the same MA type dispatch.
 impl Indicator for Ma {
     fn metadata(&self) -> &'static IndicatorMetadata {
         &MA_METADATA
@@ -142,6 +149,8 @@ pub(crate) fn ma_lookback(period: usize, ma_type: TalibMaType) -> Result<usize, 
     }
 }
 
+// Batch dispatch forwards to the concrete moving-average implementation
+// selected by `ma_type`.
 pub(crate) fn run_ma_batch(
     input: &[Real],
     period: usize,
@@ -171,6 +180,8 @@ pub(crate) fn run_ma_batch(
     }
 }
 
+// `mavp` clamps each requested period, caches repeated series where useful,
+// and uses the same concrete MA dispatch as `ma`.
 fn run_mavp_batch(
     input: &[Real],
     periods: &[Real],

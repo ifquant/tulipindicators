@@ -1,3 +1,8 @@
+//! Sliding-window extrema indicators share one monotonic-queue core. Value and
+//! index variants differ only in which queue front they expose, and the
+//! min/max pair indicators reuse the same window bookkeeping to emit both ends
+//! of the range in one pass.
+
 use super::parse_positive_period;
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
@@ -85,6 +90,7 @@ pub struct MinMax;
 #[derive(Debug, Clone, Copy)]
 pub struct MinMaxIndex;
 
+// The value and index variants are thin wrappers around the same queue logic.
 impl Indicator for MidPoint {
     fn metadata(&self) -> &'static IndicatorMetadata {
         &MIDPOINT_METADATA
@@ -135,6 +141,7 @@ impl Indicator for MidPoint {
     }
 }
 
+// Rolling midpoint uses the same monotonic-queue windowing as the batch path.
 struct MidPointStream {
     period: usize,
     progress: usize,

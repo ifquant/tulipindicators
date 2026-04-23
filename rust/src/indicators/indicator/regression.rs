@@ -1,3 +1,9 @@
+//! Linear-regression indicators share one rolling fit implementation and vary
+//! only by the projected value they emit: value-at-period, intercept,
+//! slope/angle, forecast, or oscillator. Inputs are always a single real
+//! series with a period option, and the helpers below keep the same window
+//! math across every variant.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -75,6 +81,8 @@ pub struct Tsf;
 #[derive(Debug, Clone, Copy)]
 pub struct Fosc;
 
+// The public indicator types are thin wrappers around the shared regression
+// fit; only the projection target changes.
 impl Indicator for LinReg {
     fn metadata(&self) -> &'static IndicatorMetadata {
         &LINREG_METADATA
@@ -448,6 +456,8 @@ fn run_fosc_batch(input: &[Real], period: usize, output: &mut [Real]) -> usize {
     output.len()
 }
 
+// The regression helpers below reuse the same running sums and projection
+// modes for every output shape.
 enum RegressionProjection {
     ValueAt(Real),
     Slope,

@@ -1,3 +1,8 @@
+//! Hilbert Transform indicators share a fixed warmup window and a recursive,
+//! stateful helper pipeline. The individual indicators differ only in which
+//! short- or long-cycle outputs they expose; the state objects below carry the
+//! odd/even history needed to keep the filters aligned.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata,
@@ -88,6 +93,7 @@ struct HilbertHistory {
     prev_input_even: Real,
 }
 
+// Recursive state shared by the short-cycle Hilbert variants.
 impl HilbertHistory {
     fn new() -> Self {
         Self {
@@ -130,6 +136,7 @@ impl HilbertHistory {
     }
 }
 
+// Fixed warmup smoothing before the Hilbert recursion starts.
 struct PriceWmaState {
     trailing_idx: usize,
     period_wma_sub: Real,
@@ -425,6 +432,8 @@ impl Indicator for HtTrendMode {
     }
 }
 
+// Short-cycle and long-cycle drivers reuse the same recursive state with
+// different warmup lengths and output shapes.
 fn run_short_ht_batch(
     input: &[Real],
     kind: ShortHtKind,

@@ -1,3 +1,8 @@
+//! Price/volume indicators in this file are grouped by shape: some are
+//! stateless one-bar transforms, while others keep only rolling sums or
+//! cumulative state. The shared stream adapters mirror the batch paths so the
+//! input arity and output length stay consistent.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -371,6 +376,7 @@ impl Indicator for Nvi {
     }
 }
 
+// Cumulative volume indicators keep one running level per input series.
 fn run_nvi_batch(close: &[Real], volume: &[Real], output: &mut [Real]) -> usize {
     let Some((&first_close, rest_close)) = close.split_first() else {
         return 0;
@@ -696,6 +702,7 @@ impl Indicator for Wad {
     }
 }
 
+// Stream adapters below mirror the same per-sample shapes as the batch paths.
 struct AdStream {
     progress: usize,
     sum: Real,

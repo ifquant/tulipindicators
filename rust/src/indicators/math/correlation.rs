@@ -1,3 +1,8 @@
+//! Pairwise math indicators in this file share the same rolling-window shape:
+//! `beta` computes a regression between two return series, while `correl`
+//! computes Pearson correlation over the raw inputs. Both variants differ only
+//! in which per-sample transform feeds the shared window sums.
+
 use super::parse_positive_period;
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
@@ -30,6 +35,7 @@ pub struct Beta;
 #[derive(Debug, Clone, Copy)]
 pub struct Correl;
 
+// `beta` uses return-rate windows; `correl` uses raw samples.
 impl Indicator for Beta {
     fn metadata(&self) -> &'static IndicatorMetadata {
         &BETA_METADATA
@@ -116,6 +122,8 @@ impl Indicator for Correl {
     }
 }
 
+// The two batch helpers below differ only in the per-sample transform that
+// feeds the shared window statistics.
 fn return_rate(current: Real, previous: Real) -> Real {
     if previous != 0.0 {
         (current - previous) / previous

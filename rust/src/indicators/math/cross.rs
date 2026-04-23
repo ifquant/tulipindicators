@@ -1,3 +1,8 @@
+//! Cross detectors are one-bar lookback indicators that only care about the
+//! sign change between two aligned series. The batch and stream paths use the
+//! same transition rule; `crossany` accepts either direction, while
+//! `crossover` only reports upward crossings.
+
 use super::bool_to_real;
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
@@ -119,6 +124,8 @@ impl IndicatorStream for CrossAnyStream {
 #[derive(Debug, Clone, Copy)]
 pub struct Crossover;
 
+// Streaming keeps the previous pair so chunk boundaries do not change the
+// crossing rule.
 impl Indicator for Crossover {
     fn metadata(&self) -> &'static IndicatorMetadata {
         &CROSSOVER_METADATA

@@ -1,3 +1,8 @@
+//! Price overlay indicators in this file are grouped by input shape: 2-input,
+//! 3-input, and 4-input transforms are simple per-bar maps, while `midprice`
+//! is the rolling-window overlay. The stream wrappers mirror those shapes so
+//! batch and incremental execution stay aligned.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,
@@ -8,6 +13,7 @@ use crate::core::validation::{
 };
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue};
 
+// Small stream adapters for the stateless overlay shapes.
 struct DoubleOverlayStream {
     metadata: &'static IndicatorMetadata,
     progress: usize,
@@ -173,6 +179,8 @@ impl IndicatorStream for QuadOverlayStream {
     }
 }
 
+// Most helpers are direct per-sample transforms; `midprice` is the only
+// rolling-window overlay in this module.
 fn avgprice_op(open: Real, high: Real, low: Real, close: Real) -> Real {
     (open + high + low + close) * 0.25
 }
