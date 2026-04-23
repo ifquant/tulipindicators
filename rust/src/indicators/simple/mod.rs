@@ -1,3 +1,17 @@
+//! Simple vector transforms.
+//!
+//! This module defines macro-generated unary and binary indicators that apply a
+//! fixed scalar operation to each sample or sample pair. They have no lookback and no
+//! indicator-specific state beyond streaming progress, so batch, in-place, and
+//! stream execution all reduce to the same element-wise shape:
+//! - unary transforms consume one `real` input series and produce one output
+//!   series of the same length;
+//! - binary transforms consume two `real` input series and produce one output
+//!   series of the same length.
+//!
+//! The individual indicators are intentionally generated rather than expanded
+//! one by one, because they only differ by metadata and the scalar operator.
+
 use crate::core::error::IndicatorError;
 use crate::core::indicator::{
     ensure_output_len, validate_output_slices, Indicator, IndicatorMetadata, IndicatorStream,

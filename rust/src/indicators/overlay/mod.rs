@@ -1,3 +1,9 @@
+//! Overlay and moving-average family.
+//!
+//! These indicators are meant to be plotted on or alongside price rather than
+//! treated as standalone oscillators. The module collects moving averages,
+//! price overlays, bands, and related smoothers under one family boundary.
+
 mod bbands;
 mod beta_channels;
 mod beta_smoothers;

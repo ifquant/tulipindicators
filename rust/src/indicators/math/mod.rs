@@ -1,3 +1,9 @@
+//! Vector math and rolling utility indicators.
+//!
+//! This family holds helpers that operate on one or two input series without
+//! encoding a market-specific interpretation. It includes comparison-style
+//! transforms, rolling extrema, decay helpers, and related batch/stream logic.
+
 mod correlation;
 mod cross;
 mod decay;

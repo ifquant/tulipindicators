@@ -1,3 +1,11 @@
+//! Oscillator and indicator family.
+//!
+//! This module collects the named technical indicators that are not simple
+//! one-to-one transforms and usually carry lookback, smoothing, or multi-input
+//! state. The exports are grouped by the same families used in the original
+//! indicator set, with short type names for callers and broader module names
+//! for maintainers.
+
 mod adx;
 mod adxr;
 mod ao;

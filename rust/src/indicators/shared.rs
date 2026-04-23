@@ -1,6 +1,16 @@
+//! Internal helper state for indicator implementations.
+//!
+//! The types in this module are not public API, but they centralize the small
+//! amount of reusable state needed by multiple indicators: exponential and
+//! Wilder-style smoothing, RSI and directional movement tracking, rolling
+//! extrema queues, fixed-width sums, rolling variance, weighted averages, and
+//! true-range helpers. Keep the docs factual so future maintainers can match
+//! the helper to the indicator behavior without reading every caller first.
+
 use crate::core::types::Real;
 use std::collections::VecDeque;
 
+/// Incremental EMA state with one multiplier and an optional initialized value.
 #[derive(Debug, Clone, Copy)]
 pub struct EmaState {
     multiplier: Real,
@@ -29,6 +39,8 @@ impl EmaState {
     }
 }
 
+/// Wilder-style accumulator that emits an average after the warmup period and
+/// then updates with the standard recursive smoothing step.
 #[derive(Debug, Clone, Copy)]
 pub struct WildersAverageState {
     period: usize,
@@ -69,6 +81,7 @@ impl WildersAverageState {
     }
 }
 
+/// RSI accumulator that keeps the last input plus smoothed up/down moves.
 #[derive(Debug, Clone, Copy)]
 pub struct RsiState {
     period: usize,
@@ -126,6 +139,7 @@ impl RsiState {
     }
 }
 
+/// Shared directional-movement warmup and smoothing state.
 #[derive(Debug, Clone, Copy)]
 pub struct DirectionalMovementState {
     period: usize,
@@ -189,6 +203,8 @@ impl DirectionalMovementState {
     }
 }
 
+/// Shared ADX/DI-style state that tracks ATR, directional movement, and the
+/// previous bar inputs needed to advance the rolling values.
 #[derive(Debug, Clone, Copy)]
 pub struct DirectionalIndexState {
     period: usize,
@@ -264,12 +280,14 @@ impl DirectionalIndexState {
     }
 }
 
+/// Queue flavor for rolling max/min tracking.
 #[derive(Debug, Clone, Copy)]
 pub enum ExtremaKind {
     Max,
     Min,
 }
 
+/// Monotonic deque used for rolling extrema and index queries.
 pub struct MonotonicQueue {
     kind: ExtremaKind,
     values: VecDeque<(usize, Real)>,
@@ -323,6 +341,7 @@ impl MonotonicQueue {
     }
 }
 
+/// Fixed-width rolling sum backed by a ring buffer.
 #[derive(Debug, Clone)]
 pub struct RingSum {
     values: Vec<Real>,
@@ -365,11 +384,13 @@ impl RingSum {
     }
 }
 
+/// Rolling variance result container.
 #[derive(Debug, Clone, Copy)]
 pub struct RollingStats {
     pub variance: Real,
 }
 
+/// Rolling sum-of-values state used by variance-style indicators.
 #[derive(Debug, Clone)]
 pub struct RollingStatsState {
     period: usize,
@@ -420,6 +441,7 @@ impl RollingStatsState {
     }
 }
 
+/// Helper for batch rolling variance transforms with a caller-provided mapper.
 pub fn rolling_variance_batch<F>(
     input: &[Real],
     period: usize,
@@ -458,6 +480,7 @@ where
     out_index
 }
 
+/// Rolling weighted moving average state.
 #[derive(Debug, Clone)]
 pub struct WmaState {
     period: usize,
@@ -505,6 +528,7 @@ impl WmaState {
     }
 }
 
+/// True range over the current bar and previous close.
 pub fn true_range(high: Real, low: Real, previous_close: Real) -> Real {
     let ych = (high - previous_close).abs();
     let ycl = (low - previous_close).abs();
