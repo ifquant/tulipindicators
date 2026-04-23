@@ -113,7 +113,6 @@ fn indicator_source_files_have_explanatory_comments() {
 }
 
 #[test]
-#[ignore = "enabled after release guide links land"]
 fn release_guides_link_to_deeper_indicator_docs() {
     let readme = read("README.md");
     assert!(

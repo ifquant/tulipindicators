@@ -1,100 +1,46 @@
 # State API
 
-This page describes the Rust-side incremental API that sits on top of the
-existing Tulip batch layer.
+This page covers the incremental layer. For the batch, stream, and in-place
+entry points that sit underneath it, see [`tutorials/indicator-api.md`](indicator-api.md).
 
-## API Layers
+## What The State Layer Does
 
-The crate now has three distinct ways to use an indicator:
+State objects keep a bounded history while they process data one sample or one
+row at a time.
 
-1. Batch convenience
+Use them when you need:
 
-- `run(...)`
-- `run_single(...)`
+- incremental updates
+- `latest()` / `latest_ref()`
+- indexed history through `get(...)` / `get_ref(...)`
+- a stable wrapper around a typed indicator or a runtime-selected indicator
 
-Use this when you want the simplest batch API and do not care about caller-owned
-output buffers.
-
-For one-output indicators, `run_single(...)` is usually the better batch entry
-point because it returns `Vec<Real>` directly instead of `Vec<Vec<Real>>`.
-
-2. Batch performance
-
-- `run_in_place(...)`
-
-Use this when you want the existing high-performance batch kernels and full
-control over output allocation.
-
-3. Incremental state
-
-- typed `FooState`
-- `DynamicIndicatorState`
-
-Use this when market data arrives one sample at a time and you want:
-
-- `seed(...)`
-- `update(...)`
-- `latest()`
-- `get(index_from_latest)`
-
-## History Model
-
-State objects use a fixed-capacity ring buffer for output history.
-
-That means:
-
-- no full-buffer shifting when history is full
-- `update(...)` stays `O(1)` for history storage
-- `get(0)` returns the newest output
-- `get(1)` returns the previous output
-
-When the buffer is full, the oldest output is overwritten.
-
-History capacity must be at least `1`. Passing `0` is rejected because this
-state API is specifically the history-retaining incremental layer. If you need
-incremental calculation without history storage, use the lower-level stream API.
+The history buffer is fixed-size. When it fills up, the oldest output is
+overwritten instead of shifting the whole buffer.
 
 ## Typed State
 
-Typed state wrappers are the preferred interface when the indicator is known at
-compile time.
-
-Example:
+Typed state wrappers are the best fit when the indicator is known at compile
+time.
 
 ```rust
 use tulipindicators::{IndicatorState, Rsi};
 
-let history = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
-let mut rsi = Rsi::state(&[3.0], 32)?;
+fn main() -> Result<(), tulipindicators::IndicatorError> {
+    let closes = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
+    let mut rsi = Rsi::state(&[14.0], 32)?;
 
-rsi.seed(&history)?;
+    let produced = rsi.seed(&closes)?;
+    assert!(produced <= closes.len());
 
-let latest = rsi.update(106.0);
-let current = rsi.latest();
-let previous = rsi.get(1);
+    let latest = rsi.update(106.0);
+    assert_eq!(latest, rsi.latest());
 
-# let _ = (latest, current, previous);
-# Ok::<(), tulipindicators::IndicatorError>(())
+    Ok(())
+}
 ```
 
-## Batch Single-Output
-
-When an indicator only has one output series, you can stay on the batch API and
-avoid `batch[0]` unpacking:
-
-```rust
-use tulipindicators::{Indicator, Rsi};
-
-let history = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
-let values = Rsi.run_single(&[&history], &[3.0])?;
-
-assert!(!values.is_empty());
-assert!(values.iter().all(|value| value.is_finite()));
-
-# Ok::<(), tulipindicators::IndicatorError>(())
-```
-
-Typed state wrappers currently exist for:
+Typed wrappers currently exist for:
 
 - `RsiState`
 - `DmState`
@@ -113,64 +59,49 @@ Typed state wrappers currently exist for:
 
 ## Dynamic State
 
-Use `DynamicIndicatorState` when the indicator is only known at runtime.
-
-You can construct it by name:
+Use `DynamicIndicatorState` when the indicator name is only known at runtime.
 
 ```rust
 use tulipindicators::DynamicIndicatorState;
 
-let history = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
-let mut state = DynamicIndicatorState::from_name("rsi", &[3.0], 32)?;
+fn main() -> Result<(), tulipindicators::IndicatorError> {
+    let closes = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
+    let mut state = DynamicIndicatorState::from_name("rsi", &[14.0], 32)?;
 
-state.seed_columns(&[&history])?;
-let latest = state.update(&[106.0])?;
+    state.seed_columns(&[&closes])?;
+    let next = state.update(&[106.0])?;
+    assert!(next.is_some());
 
-# let _ = latest;
-# Ok::<(), tulipindicators::IndicatorError>(())
+    Ok(())
+}
 ```
 
-Or by indicator handle:
+The row shape comes from registry metadata:
 
-```rust
-use tulipindicators::{IndicatorStateFactory, RSI};
+- one value per declared input
+- one option per declared option name
+- one output vector per declared output name
 
-let history = [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0];
-let mut state = RSI.dynamic_state(&[3.0], 32)?;
-
-state.seed_columns(&[&history])?;
-let latest = state.update(&[106.0])?;
-
-# let _ = latest;
-# Ok::<(), tulipindicators::IndicatorError>(())
-```
-
-For multi-input indicators, the row/column layout follows indicator metadata:
-
-- `dm.update(&[high, low])`
-- `di.update(&[high, low, close])`
-- `stoch.update(&[high, low, close])`
+For multi-input indicators, the input order is the same order listed in
+`IndicatorMetadata::input_names`.
 
 ## Seed Forms
 
-The dynamic API supports both column-oriented and row-oriented seeding:
+Dynamic state supports both layouts:
 
 - `seed_columns(&[&[Real]])`
 - `seed_rows(&[Vec<Real>])`
 
-Column-oriented seeding is usually the better match for existing batch data.
-Row-oriented seeding is useful when historical data already exists as per-sample
-records.
+Column-oriented seeding usually matches existing batch data better. Row-oriented
+seeding is useful when historical samples are already stored as per-row records.
 
-## Design Boundary
+## When To Use What
 
-The state layer intentionally does not replace the batch layer.
+- Use `run(...)` when you want the simplest owned batch output.
+- Use `run_single(...)` when the indicator has one output series.
+- Use `run_in_place(...)` when you want caller-owned batch buffers.
+- Use typed `FooState` wrappers when the indicator is known at compile time.
+- Use `DynamicIndicatorState` when the indicator is chosen by name at runtime.
 
-The rule is:
-
-- existing batch kernels stay the performance-oriented foundation
-- state wrappers reuse those stream/state internals when available
-- dynamic fallback only exists to make the incremental API universal
-
-That keeps the high-performance layer stable while still making the library
-practical for live incremental usage.
+For the full registry shape catalog, see
+[`tutorials/indicator-reference.md`](indicator-reference.md).

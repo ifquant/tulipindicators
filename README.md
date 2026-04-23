@@ -72,6 +72,8 @@ unwrap `Vec<Vec<Real>>` manually.
 
 See also:
 - [`tutorials/state-api.md`](tutorials/state-api.md)
+- [`tutorials/indicator-api.md`](tutorials/indicator-api.md)
+- [`tutorials/indicator-reference.md`](tutorials/indicator-reference.md)
 
 On top of that batch layer, the Rust crate now also exposes a stateful API for
 incremental usage:
