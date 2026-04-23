@@ -5,7 +5,7 @@ use crate::core::indicator::{
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
 use crate::indicators::shared::EmaState;
-use crate::state::{IndicatorState, RingHistory};
+use crate::state::{validate_history_capacity, IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "macd",
@@ -293,6 +293,7 @@ pub struct MacdState {
 impl MacdState {
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let (short_period, long_period, signal_period) = parse_options(options)?;
+        validate_history_capacity(METADATA.name, history_capacity)?;
         Ok(Self {
             short_period,
             long_period,

@@ -4,7 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
-use crate::state::{IndicatorState, RingHistory};
+use crate::state::{validate_history_capacity, IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "ema",
@@ -140,6 +140,7 @@ pub struct EmaState {
 impl EmaState {
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options, METADATA.name)?;
+        validate_history_capacity(METADATA.name, history_capacity)?;
         Ok(Self {
             multiplier: 2.0 / (period as Real + 1.0),
             stream: EmaStream::new(options)?,

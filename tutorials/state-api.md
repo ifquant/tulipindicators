@@ -50,6 +50,10 @@ That means:
 
 When the buffer is full, the oldest output is overwritten.
 
+History capacity must be at least `1`. Passing `0` is rejected because this
+state API is specifically the history-retaining incremental layer. If you need
+incremental calculation without history storage, use the lower-level stream API.
+
 ## Typed State
 
 Typed state wrappers are the preferred interface when the indicator is known at

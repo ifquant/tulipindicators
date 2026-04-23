@@ -5,7 +5,7 @@ use crate::core::indicator::{
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, triple_input};
 use crate::indicators::shared::{ExtremaKind, MonotonicQueue, RingSum};
-use crate::state::{IndicatorState, RingHistory};
+use crate::state::{validate_history_capacity, IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "stoch",
@@ -257,6 +257,7 @@ pub struct StochState {
 impl StochState {
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let periods = parse_options(options)?;
+        validate_history_capacity(METADATA.name, history_capacity)?;
         Ok(Self {
             periods,
             stream: StochStream::new(options)?,

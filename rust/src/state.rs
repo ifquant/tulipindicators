@@ -61,8 +61,8 @@ pub(crate) struct RingHistory<T: Clone> {
 impl<T: Clone> RingHistory<T> {
     pub(crate) fn new(capacity: usize) -> Self {
         Self {
-            buf: Vec::with_capacity(capacity.max(1)),
-            capacity: capacity.max(1),
+            buf: Vec::with_capacity(capacity),
+            capacity,
             head: 0,
         }
     }
@@ -113,6 +113,21 @@ impl<T: Clone> RingHistory<T> {
     }
 }
 
+pub(crate) fn validate_history_capacity(
+    indicator: &'static str,
+    history_capacity: usize,
+) -> Result<(), IndicatorError> {
+    if history_capacity == 0 {
+        return Err(IndicatorError::InvalidOption {
+            indicator,
+            option: "history_capacity",
+            value: 0.0,
+            reason: "must be greater than zero",
+        });
+    }
+    Ok(())
+}
+
 pub struct DynamicIndicatorState {
     indicator: &'static dyn Indicator,
     metadata: &'static IndicatorMetadata,
@@ -153,6 +168,7 @@ impl DynamicIndicatorState {
         history_capacity: usize,
     ) -> Result<Self, IndicatorError> {
         let metadata = indicator.metadata();
+        validate_history_capacity(metadata.name, history_capacity)?;
         let backend = Self::build_backend(indicator, metadata, options)?;
         let output_scratch = vec![vec![0.0; 1]; metadata.output_names.len()];
 

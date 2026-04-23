@@ -83,6 +83,9 @@ incremental usage:
 The state layer does not shift buffers when history fills up. It uses a fixed
 capacity ring buffer and overwrites the oldest values.
 
+State history capacity must be at least `1`. Use the lower-level stream API
+when you want incremental calculation without keeping any history.
+
 ### Typed State Example
 
 Use a typed state wrapper when you know the indicator type at compile time.

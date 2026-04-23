@@ -4,7 +4,7 @@ use crate::core::indicator::{
 };
 use crate::core::types::{IndicatorCategory, Real};
 use crate::core::validation::{expect_option_count, parse_usize_option, single_input};
-use crate::state::{IndicatorState, RingHistory};
+use crate::state::{validate_history_capacity, IndicatorState, RingHistory};
 
 const METADATA: IndicatorMetadata = IndicatorMetadata {
     name: "sma",
@@ -189,6 +189,7 @@ pub struct SmaState {
 impl SmaState {
     pub fn new(options: &[Real], history_capacity: usize) -> Result<Self, IndicatorError> {
         let period = parse_period(options, METADATA.name)?;
+        validate_history_capacity(METADATA.name, history_capacity)?;
         Ok(Self {
             period,
             stream: SmaStream::new(options)?,

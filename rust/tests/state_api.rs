@@ -1,6 +1,6 @@
 use tulipindicators::{
-    registry, Adx, Adxr, Atr, Di, Dm, Dx, DynamicIndicatorState, Ema, Indicator, IndicatorState,
-    IndicatorStateFactory, Macd, Natr, Ppo, Real, Rsi, Sma, Stoch, Wilders,
+    registry, Adx, Adxr, Atr, Di, Dm, Dx, DynamicIndicatorState, Ema, Indicator, IndicatorError,
+    IndicatorState, IndicatorStateFactory, Macd, Natr, Ppo, Real, Rsi, Sma, Stoch, Wilders,
 };
 
 const EPSILON: Real = 1e-12;
@@ -77,6 +77,34 @@ fn high_low_close_series() -> (Vec<Real>, Vec<Real>, Vec<Real>) {
         })
         .collect();
     (high, low, close)
+}
+
+#[test]
+fn state_constructors_reject_zero_history_capacity() {
+    let expected = IndicatorError::InvalidOption {
+        indicator: "rsi",
+        option: "history_capacity",
+        value: 0.0,
+        reason: "must be greater than zero",
+    };
+
+    let typed_error = match Rsi::state(&[14.0], 0) {
+        Ok(_) => panic!("typed state should reject zero history"),
+        Err(error) => error,
+    };
+    assert_eq!(typed_error, expected);
+
+    let dynamic_error = match DynamicIndicatorState::from_name("rsi", &[14.0], 0) {
+        Ok(_) => panic!("dynamic state should reject zero history"),
+        Err(error) => error,
+    };
+    assert_eq!(dynamic_error, expected);
+
+    let factory_error = match Rsi.dynamic_state(&[14.0], 0) {
+        Ok(_) => panic!("factory dynamic state should reject zero history"),
+        Err(error) => error,
+    };
+    assert_eq!(factory_error, expected);
 }
 
 #[test]
