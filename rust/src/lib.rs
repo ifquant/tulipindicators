@@ -1,19 +1,23 @@
 //! Rust bindings for Tulip Indicators.
 //!
-//! The crate exposes two main usage styles:
+//! The public API is split into three layers:
 //!
 //! - batch indicators through [`Indicator`]
-//! - incremental indicators through [`IndicatorState`] and [`DynamicIndicatorState`]
+//! - stream indicators through [`IndicatorStream`]
+//! - bounded incremental state through [`IndicatorState`] and [`DynamicIndicatorState`]
 //!
-//! Batch calls allocate owned output series by default. Use [`Indicator::run`] when you
-//! want the computed values returned as `Vec<Vec<Real>>`, [`Indicator::run_in_place`] when
-//! you want to write into caller-provided buffers, and [`Indicator::run_single`] for the
-//! common single-output case.
+//! Batch calls are the release-facing default for offline analysis and benchmarks.
+//! Use [`Indicator::run`] for owned output, [`Indicator::run_single`] for single-output
+//! indicators, and [`Indicator::run_in_place`] when you want caller-owned buffers.
 //!
-//! Incremental state is useful when you process one sample or one row at a time. The
-//! history buffer is always bounded and [`IndicatorState::history_capacity`] must be
-//! greater than zero. If you do not need indexed history, prefer a stream-backed API
-//! instead of keeping extra state yourself.
+//! Stream and state APIs are for row-by-row or sample-by-sample processing. State
+//! history is bounded, and [`IndicatorState::history_capacity`] must be greater than
+//! zero. If you do not need indexed history, prefer [`IndicatorStream`] over extra
+//! state.
+//!
+//! For deeper guides and registry details, see `tutorials/indicator-api.md`,
+//! `tutorials/state-api.md`, `tutorials/indicator-reference.md`, and the focused
+//! examples under `examples/`.
 //!
 //! # Batch example
 //!

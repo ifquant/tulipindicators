@@ -56,13 +56,12 @@ fn documentation_style_harness_covers_expected_files() {
         "documentation style harness should scan indicator source files"
     );
     assert!(
-        read("README.md").contains("Rust State API"),
+        read("README.md").contains("## Rust API"),
         "documentation style harness should read release-facing markdown"
     );
 }
 
 #[test]
-#[ignore = "enabled after release documentation lands"]
 fn public_api_modules_have_crate_or_item_docs() {
     let required_files = [
         "rust/src/lib.rs",
