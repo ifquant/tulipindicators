@@ -51,3 +51,7 @@ path = "rust/tests/single_output_api.rs"
 [[test]]
 name = "run_single_style"
 path = "rust/tests/run_single_style.rs"
+
+[[test]]
+name = "documentation_style"
+path = "rust/tests/documentation_style.rs"
